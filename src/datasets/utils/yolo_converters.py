@@ -69,5 +69,3 @@ def synthetic_to_yolo_format(root_dir: Path, class_names: dict, train_ratio: flo
     print(f"\n--- Conversion finished ---")
     print(f"The configuration is saved into: {yaml_path}")
     print(f"Conversion finished! YOLO data directory: {yolo_result_dir}")
-
-synthetic_to_yolo_format(Path(r"C:\Users\Zhenya\Projects\Datasets\Synthetic"), class_names={0: "drone"})
