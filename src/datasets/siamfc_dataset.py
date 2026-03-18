@@ -9,14 +9,16 @@ import matplotlib.pyplot as plt
 from torchvision.transforms import ToTensor
 
 from datasets.synthetic_dataset import SyntheticDataset
+from models.trackers.siamfc import SiamFCNet
+from models.trackers.feature_extractors import AlexNetFeatureExtractor
 
 class SiamFCDataset(torch.utils.data.Dataset):
     def __init__(self, root_dir, transform=None):
-        self.dataset = SyntheticDataset(root_path=root_dir)
+        self.dataset = SyntheticDataset(root_path=root_dir, csv_name="labels.txt")
         self.videos = self.dataset.parse()
         self.transform = transform
-        self.min_gap = 10
-        self.max_gap = 100
+        self.min_gap = 2
+        self.max_gap = 10
         
         self.video_slots = [max(0, len(v.frames) - self.min_gap) for v in self.videos]
     
@@ -50,18 +52,22 @@ class SiamFCDataset(torch.utils.data.Dataset):
         context_ymax += top_pad
 
         if any([top_pad, bottom_pad, left_pad, right_pad]):
-            te_im = np.zeros((im_sz[0] + top_pad + bottom_pad, 
-                            im_sz[1] + left_pad + right_pad, 3), np.uint8)
+            te_im = np.zeros((im_sz[0] + top_pad + bottom_pad,
+                              im_sz[1] + left_pad + right_pad, 3), np.uint8)
             te_im[top_pad:top_pad + im_sz[0], left_pad:left_pad + im_sz[1]] = im
-            if top_pad: te_im[0:top_pad, :] = avg_chans
-            if bottom_pad: te_im[im_sz[0] + top_pad:, :] = avg_chans
-            if left_pad: te_im[:, 0:left_pad] = avg_chans
-            if right_pad: te_im[:, im_sz[1] + left_pad:] = avg_chans
-            im_patch = te_im[int(context_ymin):int(context_ymax + 1), 
-                            int(context_xmin):int(context_xmax + 1)]
+            if top_pad: 
+                te_im[0:top_pad, :] = avg_chans
+            if bottom_pad: 
+                te_im[im_sz[0] + top_pad:, :] = avg_chans
+            if left_pad: 
+                te_im[:, 0:left_pad] = avg_chans
+            if right_pad: 
+                te_im[:, im_sz[1] + left_pad:] = avg_chans
+            im_patch = te_im[int(context_ymin):int(context_ymax + 1),
+                             int(context_xmin):int(context_xmax + 1)]
         else:
-            im_patch = im[int(context_ymin):int(context_ymax + 1), 
-                        int(context_xmin):int(context_xmax + 1)]
+            im_patch = im[int(context_ymin):int(context_ymax + 1),
+                          int(context_xmin):int(context_xmax + 1)]
 
         if not np.array_equal(model_sz, original_sz):
             im_patch = cv2.resize(im_patch, (model_sz, model_sz))
@@ -120,14 +126,20 @@ class SiamFCDataset(torch.utils.data.Dataset):
         return examplar_image, search_image, gt
 
 if __name__ == '__main__':
-    dataset = SiamFCDataset(r"path", 
+    dataset = SiamFCDataset(r"C:\Users\yevhe\PhDProjects\datasets\Synthetic", 
                             transform=ToTensor())
+    net = SiamFCNet(AlexNetFeatureExtractor())
 
     sample_idx = np.random.randint(0, len(dataset)-1)
     examplar, search, gt = dataset[sample_idx]
+    pred = net(examplar.unsqueeze(0), search.unsqueeze(0)).detach().numpy()
+    print(f"Predicted score map shape: {pred.shape}")
+    print(len(dataset))
+
     search = search.numpy().transpose(1, 2, 0)
     examplar = examplar.numpy().transpose(1, 2, 0)
     gt = gt.numpy()
+    print(f"Ground truth shape: {gt.shape}")
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 

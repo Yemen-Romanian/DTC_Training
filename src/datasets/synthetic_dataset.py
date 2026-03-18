@@ -16,12 +16,12 @@ class SyntheticDataset:
 
     def parse(self):
         video_list = []
-        
+        print(list(self.root_path.iterdir()))
         for video_dir in self.root_path.iterdir():
             if not video_dir.is_dir():
                 continue
             
-            frames = sorted(list(video_dir.glob(f"*{self.image_extension}")))
+            frames = sorted(list(video_dir.rglob(f"*{self.image_extension}")))
             
             if not frames:
                 logging.warning(f"No videos found in folder {video_dir.name}.")
