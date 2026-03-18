@@ -13,17 +13,18 @@ def synthetic_to_yolo_format(root_dir: Path, class_names: dict, train_ratio: flo
         (yolo_result_dir / "images" / split).mkdir(parents=True, exist_ok=True)
         (yolo_result_dir / "labels" / split).mkdir(parents=True, exist_ok=True)
     
-    bbox_files = list(root_dir.rglob("bboxes.csv"))
+    bbox_files = list(root_dir.rglob("labels.txt"))
     print(f"Found subdirectories with images: {len(bbox_files)}")
 
     for bbox_file in bbox_files:
         data_dir = bbox_file.parent
+        image_dir = data_dir / "images"
         dataset_prefix = data_dir.name
         
         df = pd.read_csv(bbox_file, header=None, names=['img_idx', 'class_id', 'x', 'y', 'w', 'h', 'unknown'])
         
         image_extensions = ('.jpg')
-        all_images = [f for f in data_dir.iterdir() if f.suffix.lower() in image_extensions]
+        all_images = [f for f in image_dir.iterdir() if f.suffix.lower() in image_extensions]
 
         for img_path in tqdm(all_images, desc=f"Processing {dataset_prefix}"):
             img_idx = int(img_path.stem)
