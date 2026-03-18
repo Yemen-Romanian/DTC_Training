@@ -16,7 +16,7 @@ class SyntheticDataset:
 
     def parse(self):
         video_list = []
-        print(list(self.root_path.iterdir()))
+        
         for video_dir in self.root_path.iterdir():
             if not video_dir.is_dir():
                 continue

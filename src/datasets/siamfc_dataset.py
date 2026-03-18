@@ -9,8 +9,6 @@ import matplotlib.pyplot as plt
 from torchvision.transforms import ToTensor
 
 from datasets.synthetic_dataset import SyntheticDataset
-from models.trackers.siamfc import SiamFCNet
-from models.trackers.feature_extractors import AlexNetFeatureExtractor
 
 class SiamFCDataset(torch.utils.data.Dataset):
     def __init__(self, root_dir, transform=None):
@@ -126,20 +124,14 @@ class SiamFCDataset(torch.utils.data.Dataset):
         return examplar_image, search_image, gt
 
 if __name__ == '__main__':
-    dataset = SiamFCDataset(r"C:\Users\yevhe\PhDProjects\datasets\Synthetic", 
+    dataset = SiamFCDataset(r"path", 
                             transform=ToTensor())
-    net = SiamFCNet(AlexNetFeatureExtractor())
 
     sample_idx = np.random.randint(0, len(dataset)-1)
     examplar, search, gt = dataset[sample_idx]
-    pred = net(examplar.unsqueeze(0), search.unsqueeze(0)).detach().numpy()
-    print(f"Predicted score map shape: {pred.shape}")
-    print(len(dataset))
-
     search = search.numpy().transpose(1, 2, 0)
     examplar = examplar.numpy().transpose(1, 2, 0)
     gt = gt.numpy()
-    print(f"Ground truth shape: {gt.shape}")
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 
