@@ -1,11 +1,23 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
+@dataclass
+class BoundingBox:
+    x: int
+    y: int
+    width: int
+    height: int
 
-class TrackerBase(ABC):
+@dataclass
+class SingleObjectTrackResult:
+    bbox: BoundingBox
+    confidence: float
+
+class SingleObjectTrackerBase(ABC):
     @abstractmethod
     def initialize(self, image, bbox):
         pass
 
     @abstractmethod
-    def track(self, image):
+    def track(self, image) -> SingleObjectTrackResult:
         pass

@@ -7,7 +7,7 @@ from pathlib import Path
 import argparse
 
 from models.trackers.feature_extractors import AlexNetFeatureExtractor
-from models.trackers.tracker import TrackerBase
+from models.trackers.tracker import SingleObjectTrackerBase, SingleObjectTrackResult, BoundingBox
 
 
 class SiamFCNet(nn.Module):
@@ -43,7 +43,7 @@ class SiamFCNet(nn.Module):
         return score.squeeze(1)
 
 
-class TrackerSiamFC(TrackerBase):
+class TrackerSiamFC(SingleObjectTrackerBase):
     EXAMPLAR_SIZE = 127
     ROI_SIZE = 255
     ROI_PAD_FACTOR = 2
@@ -156,50 +156,15 @@ class TrackerSiamFC(TrackerBase):
         disp_real = disp_score * 8 * ((self.s_x * chosen_scale) / self.ROI_SIZE)
 
         self.pos += disp_real
-        
-        return [int(self.pos[1] - self.target_sz[1]/2),
-                int(self.pos[0] - self.target_sz[0]/2),
-                int(self.target_sz[1]), int(self.target_sz[0])]
 
-    
-def demo(model_path, image_folder_path):
-    siamfc_model = SiamFCNet(AlexNetFeatureExtractor())
-    siamfc_model.load_state_dict(torch.load(model_path))
-    tracker = TrackerSiamFC(siamfc_model)
+        bbox = BoundingBox(
+            x=int(self.pos[1] - self.target_sz[1]/2),
+            y=int(self.pos[0] - self.target_sz[0]/2),
+            width=int(self.target_sz[1]),
+            height=int(self.target_sz[0])
+        )
 
-    image_folder = Path(image_folder_path)
-    cap = cv2.VideoCapture(str(image_folder / "%06d.jpg"), cv2.CAP_IMAGES)
-    ret, frame = cap.read()
+        confidence = 1.0  # Placeholder for confidence score
 
-    roi = cv2.selectROI("Select Object to Track", frame, fromCenter=False, showCrosshair=True)
-    tracker.initialize(frame, roi)
+        return SingleObjectTrackResult(bbox=bbox, confidence=confidence)
 
-    if not cap.isOpened():
-        print("Error: Could not open the image sequence.")
-    else:
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break # Break the loop when no more frames are returned
-            
-            bbox = tracker.track(frame)
-            x, y, w, h = bbox
-            frame = cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-            # Process the frame (e.g., display it)
-            cv2.imshow('Tracking result', frame)
-            
-            # Wait for 30ms and break if 'q' is pressed
-            if cv2.waitKey(30) & 0xFF == ord('q'):
-                break
-
-        cap.release()
-        cv2.destroyAllWindows()
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Demo SiamFC Tracker")
-    parser.add_argument('--model_path', type=str)
-    parser.add_argument('--image_folder_path', type=str)
-    args = parser.parse_args()
-
-    demo(args.model_path, args.image_folder_path)
