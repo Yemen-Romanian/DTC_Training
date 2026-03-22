@@ -1,3 +1,5 @@
 runs
 *.pt
 __pycache__
+output
+.vscode
