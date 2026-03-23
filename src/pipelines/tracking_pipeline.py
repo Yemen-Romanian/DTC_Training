@@ -7,6 +7,7 @@ import datetime
 from models.trackers.siamfc import SiamFCNet, TrackerSiamFC
 from evaluation.tracker_results_exporters import CSVTrackerExporter, VisualizerTrackerExporter
 from models.trackers.siamfc import TrackerSiamFC, SiamFCNet, AlexNetFeatureExtractor
+from models.trackers.tracker import SingleObjectTrackResult, BoundingBox
 
 class TrackingPipeline:
     def __init__(self, tracker, exporters):
@@ -19,6 +20,10 @@ class TrackingPipeline:
         roi = cv2.selectROI("Select Object to Track", frame, fromCenter=False, showCrosshair=True)
         self.tracker.initialize(frame, roi)
         cv2.destroyWindow("Select Object to Track")
+
+        initial_bbox = BoundingBox(x=int(roi[0]), y=int(roi[1]), width=int(roi[2]), height=int(roi[3]))
+        for exporter in self.exporters:
+            exporter.on_track(frame, SingleObjectTrackResult(bbox=initial_bbox, confidence=1.0))
 
         if not cap.isOpened():
             print("Error: Could not open the image sequence.")
