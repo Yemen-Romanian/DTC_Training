@@ -8,6 +8,7 @@ from models.trackers.siamfc import SiamFCNet, TrackerSiamFC
 from evaluation.tracker_results_exporters import CSVTrackerExporter, VisualizerTrackerExporter
 from models.trackers.siamfc import TrackerSiamFC, SiamFCNet, AlexNetFeatureExtractor
 from models.trackers.tracker import SingleObjectTrackResult, BoundingBox
+from utils.video_source import VideoSource
 
 class TrackingPipeline:
     def __init__(self, tracker, exporters):
@@ -15,30 +16,26 @@ class TrackingPipeline:
         self.exporters = exporters
 
     def run(self, video_path):
-        cap = cv2.VideoCapture(str(video_path / "%06d.jpg"), cv2.CAP_IMAGES)
-        ret, frame = cap.read()
-        roi = cv2.selectROI("Select Object to Track", frame, fromCenter=False, showCrosshair=True)
-        self.tracker.initialize(frame, roi)
+        video_source = VideoSource(video_path)
+        if len(video_source) == 0:
+            print("Error: No frames found in the video source.")
+            return
+        
+        initial_frame = next(video_source)
+
+        roi = cv2.selectROI("Select Object to Track", initial_frame, fromCenter=False, showCrosshair=True)
+        self.tracker.initialize(initial_frame, roi)
         cv2.destroyWindow("Select Object to Track")
 
         initial_bbox = BoundingBox(x=int(roi[0]), y=int(roi[1]), width=int(roi[2]), height=int(roi[3]))
         for exporter in self.exporters:
-            exporter.on_track(frame, SingleObjectTrackResult(bbox=initial_bbox, confidence=1.0))
+            exporter.on_track(initial_frame, SingleObjectTrackResult(bbox=initial_bbox, confidence=1.0))
 
-        if not cap.isOpened():
-            print("Error: Could not open the image sequence.")
-            return
-
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-            
+        for frame in video_source:
             track_result = self.tracker.track(frame)
             for exporter in self.exporters:
                 exporter.on_track(frame, track_result)
 
-        cap.release()
         print("Tracking completed. Exporting results...")
 
         for exporter in self.exporters:
