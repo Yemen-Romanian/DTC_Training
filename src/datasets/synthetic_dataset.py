@@ -3,11 +3,32 @@ import pandas as pd
 import numpy as np
 import logging
 
+from utils.video_source import VideoSource
 from datasets.utils.video import Video
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class SyntheticDataset:
+    """"Reader for synthetic dataset captured using Unreal Engine 5.0.
+    The dataset should have the following structure:
+    root/
+        video1/
+            images/
+                image1.jpg
+                image2.jpg
+                ...
+            bboxes.csv
+        video2/
+            images/
+                image1.jpg
+                image2.jpg
+                ...
+            bboxes.csv
+        ...
+    The bboxes.csv should have the following format:
+    image_idx, class_id, x, y, w, h, unknown
+    """
+    
     def __init__(self, root_path, image_extension='.jpg', csv_name='bboxes.csv'):
         self.root_path = Path(root_path)
         self.image_extension = image_extension
@@ -18,12 +39,9 @@ class SyntheticDataset:
         video_list = []
         
         for video_dir in self.root_path.iterdir():
-            if not video_dir.is_dir():
-                continue
+            video_source = VideoSource(video_dir / "images")
             
-            frames = sorted(list(video_dir.rglob(f"*{self.image_extension}")))
-            
-            if not frames:
+            if len(video_source) == 0:
                 logging.warning(f"No videos found in folder {video_dir.name}.")
                 continue
 
@@ -35,9 +53,9 @@ class SyntheticDataset:
             df = pd.read_csv(csv_path, header=None, names=["image_idx", "class_id", "x", "y", "w", "h", "unknown"])
             gt_rects = df[["x", "y", "w", "h"]].values.astype(np.float32)
             image_indices = df["image_idx"].values.astype(int) - 1
-            frames = np.array(frames)[image_indices]
+            gt_rects = list(zip(image_indices, gt_rects))
 
-            video_list.append(Video(video_dir.name, frames, gt_rects))
+            video_list.append(Video(video_dir.name, video_source, gt_rects))
             
         logging.info(f"Video successfully extracted: {len(video_list)}")
         return video_list

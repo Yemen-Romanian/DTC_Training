@@ -38,3 +38,14 @@ class VideoSource:
                 self.video.release()
                 raise StopIteration
             return frame
+        
+    def __getitem__(self, index):
+        if self.is_file_source is False:
+            frame_path = self.frames[index]
+            return cv2.imread(str(frame_path))
+        else:
+            self.video.set(cv2.CAP_PROP_POS_FRAMES, index)
+            ret, frame = self.video.read()
+            if not ret:
+                raise IndexError("Frame index out of bounds")
+            return frame
