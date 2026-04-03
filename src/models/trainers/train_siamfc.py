@@ -1,6 +1,8 @@
 import logging
 from tqdm import tqdm
 import argparse
+import datetime
+from pathlib import Path
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -10,12 +12,14 @@ from torchvision.transforms import ToTensor
 from models.trackers.siamfc import SiamFCNet
 from models.trackers.feature_extractors import AlexNetFeatureExtractor
 from models.losses import BalancedLoss
+from datasets.synthetic_dataset import SyntheticDataset
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def train(dataset_path, batch_size, lr, epoch_num):
-    dataset = SiamFCDataset(dataset_path, transform=ToTensor())
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+def train(train_loader, test_loader, output_path, lr, epoch_num):
+    experiment_dir = Path(output_path) / "training" / f"siamfc_training_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+
     model = SiamFCNet(AlexNetFeatureExtractor())
     loss = BalancedLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -24,12 +28,15 @@ def train(dataset_path, batch_size, lr, epoch_num):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
+    best_test_loss = float('inf')
+
     for epoch in range(epoch_num):
-        pbar = tqdm(len(dataloader), desc=f"Epoch {epoch+1}/{epoch_num}, loss: {0.0}", total=len(dataloader))
+        model.train()
+        pbar = tqdm(len(train_loader), desc=f"Epoch {epoch+1}/{epoch_num}, loss: {0.0}", total=len(train_loader))
         epoch_loss = 0.0
         num_samples = 0
         
-        for batch_idx, (examplar, search, gt) in enumerate(dataloader):
+        for batch_idx, (examplar, search, gt) in enumerate(train_loader):
             examplar, search, gt = examplar.to(device), search.to(device), gt.to(device)
             prediction = model(examplar, search)
 
@@ -44,13 +51,52 @@ def train(dataset_path, batch_size, lr, epoch_num):
             pbar.update(1)
         pbar.close()
 
-        torch.save(model.state_dict(), "siamfc.pth")
+        if test_loader is None:
+            continue
+
+        model.eval()
+        pbar = tqdm(len(test_loader), desc=f"Evaluating on test set", total=len(test_loader))
+        with torch.no_grad():
+            test_loss = 0.0
+            num_samples = 0
+            for examplar, search, gt in test_loader:
+                examplar, search, gt = examplar.to(device), search.to(device), gt.to(device)
+                prediction = model(examplar, search)
+                batch_loss = loss(prediction, gt).sum().item()
+                test_loss += batch_loss
+                num_samples += gt.size(0)
+                pbar.update(1)
+
+            test_loss /= num_samples
+            if test_loss < best_test_loss:
+                best_test_loss = test_loss
+                torch.save(model.state_dict(), experiment_dir / "best_siamfc.pth")
+                logging.debug(f"New best model saved with test loss: {best_test_loss:.8f}")
+            logging.info(f"Epoch {epoch+1}/{epoch_num}, Test Loss: {test_loss:.8f}") 
+        pbar.close()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train SiamFC Tracker")
-    parser.add_argument('--dataset_path', type=str)
+    parser.add_argument('--train_data_path', type=str)
+    parser.add_argument('--test_data_path', type=str)
+    parser.add_argument('--output_path', type=str)
     parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--epoch_num', type=int, default=10)
     args = parser.parse_args()
-    train(args.dataset_path, args.batch_size, args.lr, args.epoch_num)
+
+    training_datasets = [
+        SyntheticDataset(root_path=args.train_data_path, csv_name="labels.txt"),
+    ]
+
+    test_datasets = [
+        SyntheticDataset(root_path=args.test_data_path, csv_name="labels.txt"),
+    ]
+
+    train_dataset = SiamFCDataset(training_datasets, transform=ToTensor())
+    test_dataset = SiamFCDataset(test_datasets, transform=ToTensor())
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
+
+    train(train_loader, test_loader, args.output_path, args.lr, args.epoch_num)

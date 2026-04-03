@@ -8,17 +8,19 @@ import matplotlib.pyplot as plt
 
 from torchvision.transforms import ToTensor
 
-from datasets.synthetic_dataset import SyntheticDataset
 
 class SiamFCDataset(torch.utils.data.Dataset):
-    def __init__(self, root_dir, transform=None):
-        self.dataset = SyntheticDataset(root_path=root_dir, csv_name="labels.txt")
-        self.videos = self.dataset.parse()
+    def __init__(self, datasets: list, transform=None):
+        self.datasets = datasets
+        self.videos = []
+        for dataset in self.datasets:
+            self.videos.extend(dataset.parse())
         self.transform = transform
         self.min_gap = 2
         self.max_gap = 10
+        print(f"Total videos: {len(self.videos)}")
         
-        self.video_slots = [max(0, len(v.frames) - self.min_gap) for v in self.videos]
+        self.video_slots = [max(0, len(v.gt_rects) - self.min_gap) for v in self.videos]
     
         self.cumulative_slots = np.cumsum(self.video_slots).tolist()
         
@@ -74,12 +76,12 @@ class SiamFCDataset(torch.utils.data.Dataset):
     def _create_data_point(self, video_index, examplar_index, search_index):
         video = self.videos[video_index]
     
-        img_z = cv2.imread(str(video.frames[examplar_index]))
-        img_x = cv2.imread(str(video.frames[search_index]))
-        avg_chans = np.mean(img_z, axis=(0, 1))
+        gt_z = video.gt_rects[examplar_index][1]
+        gt_x = video.gt_rects[search_index][1]
 
-        gt_z = video.gt_rects[examplar_index]
-        gt_x = video.gt_rects[search_index]
+        img_z = video.source[video.gt_rects[examplar_index][0]]
+        img_x = video.source[video.gt_rects[search_index][0]]
+        avg_chans = np.mean(img_z, axis=(0, 1))
 
         def get_sz(bbox):
             w, h = bbox[2], bbox[3]
@@ -117,7 +119,7 @@ class SiamFCDataset(torch.utils.data.Dataset):
         video = self.videos[video_index]
 
         low = exemplar_frame_index + self.min_gap
-        high = min(len(video.frames) - 1, exemplar_frame_index + self.max_gap)
+        high = min(len(video.gt_rects) - 1, exemplar_frame_index + self.max_gap)
         search_frame_index = random.randint(low, high)
         
         examplar_image, search_image, gt = self._create_data_point(video_index, exemplar_frame_index, search_frame_index)
