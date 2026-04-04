@@ -1,0 +1,13 @@
+[train_path]
+    synthetic = ""
+    uav123 = ""
+    manual = ""
+
+[test_path]
+    synthetic = ""
+    uav123 = ""
+    manual = ""
+
+[training_params]
+    batch_size = 16
+    lr = 0.001
