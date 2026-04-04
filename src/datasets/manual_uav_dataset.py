@@ -48,7 +48,7 @@ class ManualUAVDataset:
                 names=["frame_id", "track", "x", "y", "w", "h", "not_ignored", "class_id", "visibility"]
                 )
             
-            valid_boxes_idx = bboxes['frame_id'].values.astype(int)
+            valid_boxes_idx = bboxes['frame_id'].values.astype(int) - 1
             gt_rects = bboxes[["x", "y", "w", "h"]].values.astype(int)
             gt_rects = list(zip(valid_boxes_idx, gt_rects))
             video = Video(video_source_name, video_source, gt_rects)

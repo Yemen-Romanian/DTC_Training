@@ -65,8 +65,3 @@ class UAV123Dataset:
         if self._videos is None:
             self._videos = self.parse()
         return len(self._videos)
-    
-
-if __name__ == "__main__":
-    dataset = UAV123Dataset(r"C:\Users\yevhe\PhDProjects\datasets\UAV123_uav_only\train")
-    videos = dataset.parse()

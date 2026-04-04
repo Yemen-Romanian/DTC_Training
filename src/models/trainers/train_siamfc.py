@@ -12,7 +12,8 @@ from torchvision.transforms import ToTensor
 from models.trackers.siamfc import SiamFCNet
 from models.trackers.feature_extractors import AlexNetFeatureExtractor
 from models.losses import BalancedLoss
-from datasets.synthetic_dataset import SyntheticDataset
+from utils.config import Config
+from datasets.mixed_dataset import MixedDataset
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -78,25 +79,22 @@ def train(train_loader, test_loader, output_path, lr, epoch_num):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train SiamFC Tracker")
-    parser.add_argument('--train_data_path', type=str)
-    parser.add_argument('--test_data_path', type=str)
-    parser.add_argument('--output_path', type=str)
-    parser.add_argument('--batch_size', type=int, default=8)
-    parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--epoch_num', type=int, default=10)
+    parser.add_argument('--config_path', type=str)
     args = parser.parse_args()
 
-    training_datasets = [
-        SyntheticDataset(root_path=args.train_data_path, csv_name="labels.txt"),
-    ]
+    config = Config(args.config_path)
+    train_dataset = MixedDataset(config.get_train_paths())
+    test_dataset = MixedDataset(config.get_test_paths())
+    output_path = config.get_output_dir_path()
 
-    test_datasets = [
-        SyntheticDataset(root_path=args.test_data_path, csv_name="labels.txt"),
-    ]
+    train_siamfc_dataset = SiamFCDataset(train_dataset, transform=ToTensor())
+    test_siamfc_dataset = SiamFCDataset(test_dataset, transform=ToTensor())
 
-    train_dataset = SiamFCDataset(training_datasets, transform=ToTensor())
-    test_dataset = SiamFCDataset(test_datasets, transform=ToTensor())
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
+    batch_size = config.get_training_param('batch_size')
+    lr = config.get_training_param('lr')
+    epochs_num = config.get_training_param('epochs_num')
 
-    train(train_loader, test_loader, args.output_path, args.lr, args.epoch_num)
+    train_loader = DataLoader(train_siamfc_dataset, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_siamfc_dataset, batch_size=batch_size, shuffle=False)
+
+    train(train_loader, test_loader, output_path, lr, epochs_num)

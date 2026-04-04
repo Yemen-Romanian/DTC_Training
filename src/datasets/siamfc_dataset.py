@@ -10,11 +10,9 @@ from torchvision.transforms import ToTensor
 
 
 class SiamFCDataset(torch.utils.data.Dataset):
-    def __init__(self, datasets: list, transform=None):
-        self.datasets = datasets
-        self.videos = []
-        for dataset in self.datasets:
-            self.videos.extend(dataset.parse())
+    def __init__(self, dataset, transform=None):
+        self.dataset = dataset
+        self.videos = self.dataset.parse()
         self.transform = transform
         self.min_gap = 2
         self.max_gap = 10
