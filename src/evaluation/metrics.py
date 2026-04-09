@@ -43,18 +43,33 @@ def center_distance(r1, r2):
 def match_boxes(df1, df2):
     tp = 0
     m1 = m2 = set()
+    metrics_list = []
     for (i, r1), (j, r2) in product(enumerate(df1.itertuples()), enumerate(df2.itertuples())):
         if not (i in m1 or j in m2):
             box1 = r1.x1, r1.y1, r1.x1 + r1.w, r1.y1 + r1.h
             box2 = r2.x1, r2.y1, r2.x2, r2.y2
+            box1_area = area(box1)
+            box2_area = area(box2)
+            union = union_area(box1, box2)
+            iou = intersection_area(box1, box2) / union if union > 0 else 0
+            iog = intersection_area(box1, box2) / box1_area if box1_area > 0 else 0
+            center_dist = center_distance(box1, box2)
+            center_dist_norm = center_dist / math.sqrt(box1_area) if box1_area > 0 else 0
 
             print('---------------------')
-            print('box1', box1, 'area', area(box1))
-            print('box2', box2, 'area', area(box2))
-            print('I/U', intersection_area(box1, box2) / union_area(box1, box2))
-            print('I/G', intersection_area(box1, box2) / area(box1))
-            print('dist', center_distance(box1, box2))
-            print('dist_norm', center_distance(box1, box2) / math.sqrt(area(box1)))
+            print('box1', box1, 'area', box1_area)
+            print('box2', box2, 'area', box2_area)
+            print('I/U', iou)
+            print('I/G', iog)
+            print('dist', center_dist)
+            print('dist_norm', center_dist_norm)
+
+            metrics_list.append({
+                'iou': iou,
+                'iog': iog,
+                'center_dist': center_dist,
+                'center_dist_norm': center_dist_norm
+            })
 
             #if intersection_area(box1, box2) / union_area(box1, box2) > 0.5:
             #if intersection_area(box1, box2) / area(box1) > 0.5:
@@ -65,7 +80,7 @@ def match_boxes(df1, df2):
 
     fp = len(df2) - tp
     fn = len(df1) - tp
-    return tp, fp, fn
+    return tp, fp, fn, metrics_list
 
 
 def calculate_metrics(df1, df2):
@@ -80,7 +95,7 @@ def calculate_metrics(df1, df2):
     for frame in range(1, nframe + 1):
         df1_frame = df1.loc[[frame]] if frame in df1.index else df1.iloc[0:0]
         df2_frame = df2.loc[[frame]] if frame in df2.index else df2.iloc[0:0]
-        tpi, fpi, fni = match_boxes(df1_frame, df2_frame)
+        tpi, fpi, fni, _ = match_boxes(df1_frame, df2_frame)
         tp += tpi
         fp += fpi
         fn += fni
