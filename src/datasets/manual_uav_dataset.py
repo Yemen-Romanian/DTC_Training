@@ -43,19 +43,24 @@ class ManualUAVDataset:
                 logging.warning(f"No videos found in folder {video_source_name}.")
                 continue
 
-            bboxes = pd.read_csv(
-                annotation_path, header=None, 
-                names=["frame_id", "track", "x", "y", "w", "h", "not_ignored", "class_id", "visibility"]
-                )
-            
-            valid_boxes_idx = bboxes['frame_id'].values.astype(int) - 1
-            gt_rects = bboxes[["x", "y", "w", "h"]].values.astype(int)
-            gt_rects = list(zip(valid_boxes_idx, gt_rects))
+            gt_rects = self.parse_ground_truth(annotation_path)
             video = Video(video_source_name, video_source, gt_rects)
             self._videos.append(video)
 
         logging.info(f"Video successfully extracted: {len(self._videos)}")
         return self._videos
+    
+    @staticmethod
+    def parse_ground_truth(csv_path):
+        bboxes = pd.read_csv(
+            csv_path, header=None, 
+            names=["frame_id", "track", "x", "y", "w", "h", "not_ignored", "class_id", "visibility"]
+            )
+        
+        valid_boxes_idx = bboxes['frame_id'].values.astype(int) - 1
+        gt_rects = bboxes[["x", "y", "w", "h"]].values.astype(int)
+        gt_rects = list(zip(valid_boxes_idx, gt_rects))
+        return gt_rects
     
     def __getitem__(self, i):
         if self._videos is None:

@@ -46,15 +46,20 @@ class UAV123Dataset:
                 logging.warning(f"No videos found in folder {video_source_name}.")
                 continue
 
-            bboxes = pd.read_csv(annotation_path, header=None, names=["x", "y", "w", "h"])
-            valid_boxes_idx = bboxes[~bboxes['w'].isna()].index.astype(int).values
-            gt_rects = bboxes.loc[valid_boxes_idx].values.astype(int)
-            gt_rects = list(zip(valid_boxes_idx, gt_rects))
+            gt_rects = self.parse_ground_truth(annotation_path)
             video = Video(video_source_name, video_source, gt_rects)
             self._videos.append(video)
 
         logging.info(f"Video successfully extracted: {len(self._videos)}")
         return self._videos
+    
+    @staticmethod
+    def parse_ground_truth(csv_path):
+        bboxes = pd.read_csv(csv_path, header=None, names=["x", "y", "w", "h"])
+        valid_boxes_idx = bboxes[~bboxes['w'].isna()].index.astype(int).values
+        gt_rects = bboxes.loc[valid_boxes_idx].values.astype(int)
+        gt_rects = list(zip(valid_boxes_idx, gt_rects))
+        return gt_rects
     
     def __getitem__(self, i):
         if self._videos is None:
