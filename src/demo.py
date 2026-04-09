@@ -1,0 +1,120 @@
+import argparse
+import cv2
+import numpy as np
+import pandas as pd
+
+from utils.video_source import VideoSource
+from datasets.utils.video import Video
+from datasets.synthetic_dataset import SyntheticDataset
+from datasets.manual_uav_dataset import ManualUAVDataset
+from datasets.uav123_dataset import UAV123Dataset
+from evaluation.metrics import match_boxes
+
+TRUE_COLOR = (0, 255, 0)  # Green for ground truth
+FALSE_COLOR = (0, 0, 255)  # Red for predictions
+
+def main():
+    parser = argparse.ArgumentParser(description="Tracking Demo")
+    parser.add_argument('--video_path', type=str, required=True, help="Path to the input video file or image sequence")
+    parser.add_argument('--gt_path', type=str, required=True, help="Path to the ground truth annotations file.")
+    parser.add_argument('--data_type', type=str, choices=['synthetic', 'manual', 'uav123'], required=True, help="Type of the dataset to use for demo")
+    parser.add_argument('--tracker_results', type=str, required=True, help='Path to CSV file with tracker results to visualize. If not provided, the demo will create a tracker and run it in real time.')
+    parser.add_argument('--debug', action='store_true', help='Whether to manually control the video playback (Default to false).')
+
+    args = parser.parse_args()
+    video = create_video_from_input_info(args.video_path, args.gt_path, args.data_type)
+    tracker_results = pd.read_csv(args.tracker_results)
+    debug_mode = args.debug
+    print(debug_mode)
+
+    if len(video.source) == 0:
+        print("Error: No frames found in the video source.")
+        return
+    
+    current_gt_index = 0
+    cv2.namedWindow("Tracking Demo", cv2.WND_PROP_FULLSCREEN)
+    cv2.setWindowProperty("Tracking Demo", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+    for frame_idx, frame in enumerate(video.source):
+        gt_frame = frame.copy()
+        results_frame = frame.copy()
+
+        if current_gt_index < len(video.gt_rects) and video.gt_rects[current_gt_index][0] == frame_idx:
+            gt_rect = video.gt_rects[current_gt_index][1]
+            gt_frame = draw_bounding_box(gt_frame, gt_rect, color=TRUE_COLOR)
+            current_gt_index += 1
+
+        bbox_pred = tracker_results.iloc[[frame_idx + 1]]
+        bbox_gt = convert_gt_for_evaluation(frame_idx + 1, gt_rect)
+        tp, fp, fn, metrics_list = match_boxes(bbox_gt, bbox_pred)
+
+        bbox_to_draw = (bbox_pred['x1'].values[0],
+                        bbox_pred['y1'].values[0],
+                        bbox_pred['x2'].values[0] - bbox_pred['x1'].values[0],
+                        bbox_pred['y2'].values[0] - bbox_pred['y1'].values[0])
+        
+        results_frame = draw_metrics_info(results_frame, tp=tp, fp=fp, fn=fn, metrics_list=metrics_list)
+        results_frame = draw_bounding_box(results_frame, bbox_to_draw, color=TRUE_COLOR if tp > 0 else FALSE_COLOR)
+
+        delimiter_image = np.zeros((frame.shape[0], 10, 3), dtype=np.uint8)  # A black vertical bar as delimiter
+        frame_to_display = np.hstack([gt_frame, delimiter_image, results_frame])  # Just display the same frame twice for demo
+        cv2.imshow("Tracking Demo", frame_to_display)
+
+        if debug_mode:
+            key = cv2.waitKey(0) & 0xFF
+            if key == ord('q'):
+                break
+            elif key == ord(' '):
+                continue
+        elif cv2.waitKey(30) & 0xFF == ord('q'):
+            break
+
+def draw_bounding_box(frame, bbox, color, thickness=2):
+    """
+    bbox -- tuple (x, y, w, h)
+    """
+    x, y, w, h = bbox
+    frame = cv2.rectangle(frame, (int(x), int(y)), (int(x + w), int(y + h)), color, thickness)
+    return frame
+
+def draw_metrics_info(frame, tp, fp, fn, metrics_list, position=(10, 30)):
+    metrics = metrics_list[0] if metrics_list else {}
+    metrics_str = ", ".join(f"{k}: {v:.3f}" for k, v in metrics.items())
+    metrics_str += f", TP: {tp}, FP: {fp}, FN: {fn}"
+    frame = cv2.putText(frame, metrics_str, position, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    return frame
+
+
+def create_video_from_input_info(video_path: str, gt_path: str, data_type: str) -> Video:
+    if data_type == 'synthetic':
+        gt_rects = SyntheticDataset.parse_ground_truth(gt_path)
+    elif data_type == 'manual':
+        gt_rects = ManualUAVDataset.parse_ground_truth(gt_path)
+    elif data_type == 'uav123':
+        gt_rects = UAV123Dataset.parse_ground_truth(gt_path)
+    else:
+        raise ValueError(f"Unsupported data type: {data_type}. Supported types are: synthetic, manual, uav123.")
+    
+    video_source = VideoSource(video_path)
+    return Video(str(video_path), video_source, gt_rects)
+
+def convert_gt_for_evaluation(frame_id, gt_rect, class_id=0, track_id=0):
+    """
+    gt_rect is in the format (x, y, w, h)
+    """
+    result = {}
+    x, y, w, h = gt_rect
+    result['frame_id'] = frame_id
+    result['class_id'] = class_id
+    result['x1'] = x
+    result['y1'] = y
+    result['w'] = w
+    result['h'] = h
+    result['confidence'] = 1.0  # Ground truth has confidence of 1
+    
+    return pd.DataFrame([result])
+
+
+if __name__ == "__main__":
+    main()
+
