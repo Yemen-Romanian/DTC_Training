@@ -1,7 +1,10 @@
 runs
+output/tracking/*
+output/training/*
+output/model_weights/*
+!output/model_weights/siamfc.pth
 *.pt
 __pycache__
-output
 .vscode
 configs/*
 !configs/example_training_config.toml
