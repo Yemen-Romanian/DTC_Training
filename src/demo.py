@@ -117,18 +117,21 @@ def draw_bounding_box(frame, bbox, color, thickness=2):
 
 
 def draw_frame_number(frame, frame_number, relative_position=(0.01, 0.03)):
-    print(frame.shape)
+    text_scale = 1.0
+    text_scale = max(0.5, min(frame.shape[1], frame.shape[0]) / 1000 * text_scale)
     position = (int(frame.shape[1] * relative_position[0]), int(frame.shape[0] * relative_position[1]))
-    frame = cv2.putText(frame, f"Frame: {frame_number}", position, cv2.FONT_HERSHEY_SIMPLEX, 1.0, TEXT_COLOR, 2)
+    frame = cv2.putText(frame, f"Frame: {frame_number}", position, cv2.FONT_HERSHEY_SIMPLEX, text_scale, TEXT_COLOR, 2)
     return frame
 
 
 def draw_metrics_info(frame, tp, fp, fn, metrics_list, relative_position=(0.1, 0.03)):
+    text_scale = 1.0
+    text_scale = max(0.5, min(frame.shape[1], frame.shape[0]) / 1000 * text_scale)
     position = (int(frame.shape[1] * relative_position[0]), int(frame.shape[0] * relative_position[1]))
     metrics = metrics_list[0] if metrics_list else {}
     metrics_str = ", ".join(f"{k}: {v:.3f}" for k, v in metrics.items())
     metrics_str += f", TP: {tp}, FP: {fp}, FN: {fn}"
-    frame = cv2.putText(frame, metrics_str, position, cv2.FONT_HERSHEY_SIMPLEX, 1.0, TEXT_COLOR, 2)
+    frame = cv2.putText(frame, metrics_str, position, cv2.FONT_HERSHEY_SIMPLEX, text_scale, TEXT_COLOR, 2)
     return frame
 
 
