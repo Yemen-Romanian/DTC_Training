@@ -1,8 +1,6 @@
-import logging
 from tqdm import tqdm
 import argparse
 import datetime
-from pathlib import Path
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -14,18 +12,17 @@ from models.trackers.feature_extractors import AlexNetFeatureExtractor
 from models.losses import BalancedLoss
 from utils.config import Config
 from datasets.mixed_dataset import MixedDataset
+from utils.experiment_logger import ExperimentLogger
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def train(train_loader, test_loader, output_path, lr, epoch_num):
-    experiment_dir = Path(output_path) / "training" / f"siamfc_training_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    experiment_dir.mkdir(parents=True, exist_ok=True)
+def train(train_loader, test_loader, lr, epoch_num):
+    logger = ExperimentLogger(f"siamfc_training_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}")
 
     model = SiamFCNet(AlexNetFeatureExtractor())
     loss = BalancedLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
-    logging.info(f"Is CUDA available? {torch.cuda.is_available()}")
+    logger.info(f"Is CUDA available? {torch.cuda.is_available()}")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
@@ -50,6 +47,7 @@ def train(train_loader, test_loader, output_path, lr, epoch_num):
             num_samples += gt.size(0)
             pbar.set_description(f"Epoch {epoch+1}/{epoch_num}, loss: {epoch_loss / num_samples:.8f}")
             pbar.update(1)
+        logger.add_scalar("train_loss", epoch_loss / num_samples, epoch)
         pbar.close()
 
         if test_loader is None:
@@ -69,11 +67,12 @@ def train(train_loader, test_loader, output_path, lr, epoch_num):
                 pbar.update(1)
 
             test_loss /= num_samples
+            logger.add_scalar("test_loss", test_loss, epoch)
             if test_loss < best_test_loss:
                 best_test_loss = test_loss
-                torch.save(model.state_dict(), experiment_dir / "best_siamfc.pth")
-                logging.debug(f"New best model saved with test loss: {best_test_loss:.8f}")
-            logging.info(f"Epoch {epoch+1}/{epoch_num}, Test Loss: {test_loss:.8f}") 
+                logger.log_model(model)
+                logger.info(f"New best model saved with test loss: {best_test_loss:.8f}")
+            logger.info(f"Epoch {epoch+1}/{epoch_num}, Test Loss: {test_loss:.8f}") 
         pbar.close()
 
 
@@ -85,7 +84,6 @@ if __name__ == '__main__':
     config = Config(args.config_path)
     train_dataset = MixedDataset(config.get_train_paths())
     test_dataset = MixedDataset(config.get_test_paths())
-    output_path = config.get_output_dir_path()
 
     train_siamfc_dataset = SiamFCDataset(train_dataset, transform=ToTensor())
     test_siamfc_dataset = SiamFCDataset(test_dataset, transform=ToTensor())
@@ -97,4 +95,4 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_siamfc_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_siamfc_dataset, batch_size=batch_size, shuffle=False)
 
-    train(train_loader, test_loader, output_path, lr, epochs_num)
+    train(train_loader, test_loader, lr, epochs_num)
