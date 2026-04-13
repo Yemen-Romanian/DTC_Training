@@ -124,7 +124,7 @@ def draw_frame_number(frame, frame_number, relative_position=(0.01, 0.03)):
     return frame
 
 
-def draw_metrics_info(frame, tp, fp, fn, metrics_list, relative_position=(0.1, 0.03)):
+def draw_metrics_info(frame, tp, fp, fn, metrics_list, relative_position=(0.15, 0.03)):
     text_scale = 1.0
     text_scale = max(0.5, min(frame.shape[1], frame.shape[0]) / 1000 * text_scale)
     position = (int(frame.shape[1] * relative_position[0]), int(frame.shape[0] * relative_position[1]))
