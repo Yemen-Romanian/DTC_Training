@@ -50,6 +50,7 @@ def main():
 
         if frame_idx == 0 and not file_mode:
             tracker.initialize(frame, video.gt_rects[0][1])
+            current_gt_index += 1
 
         if current_gt_index < len(video.gt_rects) and video.gt_rects[current_gt_index][0] == frame_idx:
             gt_rect = video.gt_rects[current_gt_index][1]
