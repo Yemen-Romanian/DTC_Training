@@ -1,6 +1,4 @@
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 class AlexNetFeatureExtractor(nn.Module):
     """Feature extractor that was proposed in Bertinetto et.al paper"""
@@ -34,12 +32,12 @@ class AlexNetFeatureExtractor(nn.Module):
         return self.feature_extractor(x)
     
     
-fe = AlexNetFeatureExtractor()
-x = torch.randn((1, 3, 255, 255))
-z = torch.randn((1, 3, 127, 127))
+# fe = AlexNetFeatureExtractor()
+# x = torch.randn((1, 3, 255, 255))
+# z = torch.randn((1, 3, 127, 127))
 
-fx = fe(x)
-fz = fe(z)
+# fx = fe(x)
+# fz = fe(z)
 
-print(fx.shape)
-print(fz.shape)
+# print(fx.shape)
+# print(fz.shape)
