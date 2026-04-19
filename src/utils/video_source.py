@@ -14,7 +14,6 @@ class VideoSource:
             self.frames = sorted(self.source.glob("*.jpg"))
             self.is_file_source = False
         else:
-            self.video = cv2.VideoCapture(str(self.source))
             self.is_file_source = True
             self.cache_path = self._extract_video()
             self.frames = sorted(self.cache_path.glob("*.jpg"))
