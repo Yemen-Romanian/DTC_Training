@@ -1,6 +1,4 @@
-from datasets.synthetic_dataset import SyntheticDataset
-from datasets.manual_uav_dataset import ManualUAVDataset
-from datasets.uav123_dataset import UAV123Dataset
+from datasets.dataset_factory import create_dataset
 
 
 class MixedDataset:
@@ -18,17 +16,8 @@ class MixedDataset:
         """
         Parse datasets from different sources, defined by paths_dict passed to constructor.   
         """
-        print(self._paths_dict)
         for name, path in self._paths_dict.items():
-            if name == 'synthetic':
-                dataset = SyntheticDataset(path, csv_name="labels.txt")
-            elif name == 'uav123':
-                dataset = UAV123Dataset(path)
-            elif name == 'manual':
-                dataset = ManualUAVDataset(path, video_extension='.mp4')
-            else:
-                raise ValueError(f'Unsupported dataset {name}. Possible values: synthetic, uav123, manual')
-
+            dataset = create_dataset(name, path)
             videos = dataset.parse()
             self._videos.extend(videos)
         
