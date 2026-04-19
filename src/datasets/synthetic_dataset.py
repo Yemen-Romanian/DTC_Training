@@ -29,7 +29,7 @@ class SyntheticDataset:
     image_idx, class_id, x, y, w, h, unknown
     """
     
-    def __init__(self, root_path, image_extension='.jpg', csv_name='bboxes.csv'):
+    def __init__(self, root_path, image_extension='.jpg', csv_name='labels.txt'):
         self.root_path = Path(root_path)
         self.image_extension = image_extension
         self.csv_name = csv_name
@@ -60,6 +60,7 @@ class SyntheticDataset:
     @staticmethod
     def parse_ground_truth(csv_path):
         df = pd.read_csv(csv_path, header=None, names=["image_idx", "class_id", "x", "y", "w", "h", "unknown"])
+        df = df[(df["w"] > 0) & (df["h"] > 0)]
         gt_rects = df[["x", "y", "w", "h"]].values.astype(np.float32)
         image_indices = df["image_idx"].values.astype(int) - 1
         gt_rects = list(zip(image_indices, gt_rects))
