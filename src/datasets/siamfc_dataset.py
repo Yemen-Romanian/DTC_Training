@@ -21,6 +21,7 @@ class SiamFCDataset(torch.utils.data.Dataset):
         self.video_slots = [max(0, len(v.gt_rects) - self.min_gap) for v in self.videos]
     
         self.cumulative_slots = np.cumsum(self.video_slots).tolist()
+        self.label = torch.from_numpy(SiamFCDataset.create_label(size=17, radius=16, stride=8))
         
     def create_label(size, radius, stride):
         tc = (size - 1) / 2
@@ -95,13 +96,11 @@ class SiamFCDataset(torch.utils.data.Dataset):
         z_crop = SiamFCDataset.get_subwindow_avg(img_z, pos_z, 127, round(s_z), avg_chans)
         x_crop = SiamFCDataset.get_subwindow_avg(img_x, pos_x, 255, round(s_x), avg_chans)
 
-        label = SiamFCDataset.create_label(size=17, radius=16, stride=8)
-
         if self.transform:
             z_crop = self.transform(z_crop)
             x_crop = self.transform(x_crop)
 
-        return z_crop, x_crop, torch.from_numpy(label)
+        return z_crop, x_crop
         
     def __len__(self):
         return self.cumulative_slots[-1] if self.cumulative_slots else 0
@@ -120,8 +119,8 @@ class SiamFCDataset(torch.utils.data.Dataset):
         high = min(len(video.gt_rects) - 1, exemplar_frame_index + self.max_gap)
         search_frame_index = random.randint(low, high)
         
-        examplar_image, search_image, gt = self._create_data_point(video_index, exemplar_frame_index, search_frame_index)
-        return examplar_image, search_image, gt
+        examplar_image, search_image = self._create_data_point(video_index, exemplar_frame_index, search_frame_index)
+        return examplar_image, search_image, self.label
 
 if __name__ == '__main__':
     dataset = SiamFCDataset(r"path", 
