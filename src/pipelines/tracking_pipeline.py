@@ -4,10 +4,9 @@ import argparse
 from pathlib import Path
 import datetime
 
-from models.trackers.siamfc import SiamFCNet, TrackerSiamFC
 from evaluation.tracker_results_exporters import CSVTrackerExporter, VisualizerTrackerExporter
-from models.trackers.siamfc import TrackerSiamFC, SiamFCNet, AlexNetFeatureExtractor
 from models.trackers.tracker import SingleObjectTrackResult, BoundingBox
+from models.trackers.tracker_factory import create_tracker
 from utils.video_source import VideoSource
 
 class TrackingPipeline:
@@ -52,9 +51,8 @@ if __name__ == "__main__":
     output_dir = Path(args.output_path) / f"tracking" / datetime_str
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    siamfc_model = SiamFCNet(AlexNetFeatureExtractor())
-    siamfc_model.load_state_dict(torch.load(args.model_path))
-    tracker = TrackerSiamFC(siamfc_model)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    tracker = create_tracker('siamfc', state_dict=args.model_path, device=device)
 
     exporters = [
         CSVTrackerExporter(output_dir),

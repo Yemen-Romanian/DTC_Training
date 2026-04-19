@@ -3,10 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import cv2
 import numpy as np
-from pathlib import Path
-import argparse
 
-from models.trackers.feature_extractors import AlexNetFeatureExtractor
 from models.trackers.tracker import SingleObjectTrackerBase, SingleObjectTrackResult, BoundingBox
 
 
@@ -48,8 +45,8 @@ class TrackerSiamFC(SingleObjectTrackerBase):
     ROI_SIZE = 255
     ROI_PAD_FACTOR = 2
 
-    def __init__(self, model):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    def __init__(self, model, device):
+        self.device = device
         self.model = model
         self.model.to(self.device)
         self.model.eval()
@@ -167,4 +164,8 @@ class TrackerSiamFC(SingleObjectTrackerBase):
         confidence = 1.0  # Placeholder for confidence score
 
         return SingleObjectTrackResult(bbox=bbox, confidence=confidence)
+    
+    def to_device(self, device):
+        self.device = device
+        self.model.to(device)
 

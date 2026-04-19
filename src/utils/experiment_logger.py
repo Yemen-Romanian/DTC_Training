@@ -2,6 +2,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 import logging
+import json
 
 from pathlib import Path
 
@@ -57,6 +58,10 @@ class ExperimentLogger:
 
     def log_model(self, model):
         torch.save(model.state_dict(), self.logging_dir / "best_model.pth")
+
+    def log_dict(self, metrics_dict, filename):
+        with open(self.logging_dir / filename, "w") as f:
+            json.dump(metrics_dict, f)
         
     def close(self):
         self.tensorboard_writer.close()

@@ -21,3 +21,8 @@ class SingleObjectTrackerBase(ABC):
     @abstractmethod
     def track(self, image) -> SingleObjectTrackResult:
         pass
+
+    @abstractmethod
+    def to_device(self, device: str):
+        pass
+

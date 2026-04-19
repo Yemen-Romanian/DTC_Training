@@ -6,16 +6,22 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from datasets.siamfc_dataset import SiamFCDataset
 from torchvision.transforms import ToTensor
+import os
 
 from models.trackers.siamfc import SiamFCNet
 from models.trackers.feature_extractors import AlexNetFeatureExtractor
 from models.losses import BalancedLoss
 from utils.config import Config
 from datasets.mixed_dataset import MixedDataset
+from evaluation.tracker_evaluation import evaluate_tracker, calculate_average_metrics
+from models.trackers.tracker_factory import create_tracker
 from utils.experiment_logger import ExperimentLogger
 
 
-def train(train_loader, test_loader, lr, epoch_num):
+def train(config, train_loader, test_loader):
+    lr = config.get_training_param('lr')
+    epoch_num = config.get_training_param('epochs_num')
+
     logger = ExperimentLogger(f"siamfc_training_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}")
 
     model = SiamFCNet(AlexNetFeatureExtractor())
@@ -26,7 +32,8 @@ def train(train_loader, test_loader, lr, epoch_num):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    best_test_loss = float('inf')
+    best_test_iou = 0.0
+    evaluation_interval = config.get_training_param('evaluation_interval')
 
     for epoch in range(epoch_num):
         model.train()
@@ -68,12 +75,26 @@ def train(train_loader, test_loader, lr, epoch_num):
 
             test_loss /= num_samples
             logger.add_scalar("test_loss", test_loss, epoch)
-            if test_loss < best_test_loss:
-                best_test_loss = test_loss
-                logger.log_model(model)
-                logger.info(f"New best model saved with test loss: {best_test_loss:.8f}")
             logger.info(f"Epoch {epoch+1}/{epoch_num}, Test Loss: {test_loss:.8f}") 
         pbar.close()
+
+        if epoch % evaluation_interval == 0:
+            logger.info(f"Performing evaluation on test set...")
+            tracker = create_tracker('siamfc', state_dict=model.state_dict())
+            results = evaluate_tracker(tracker, config)
+            avg_results = calculate_average_metrics(results)
+
+            for avg_metric_name, avg_metric_value in avg_results.items():
+                logger.add_scalar(f"avg_{avg_metric_name}", avg_metric_value, epoch)
+
+            logger.log_dict(results, f"evaluation_results_epoch_{epoch+1}.json")
+            logger.log_dict(avg_results, f"average_evaluation_results_epoch_{epoch+1}.json")
+
+            logger.info(f"Value of new metrics: {avg_results}")
+            if avg_results["iou"] > best_test_iou:
+                best_test_iou = avg_results["iou"]
+                logger.log_model(model)
+                logger.info(f"New best model saved with test IoU: {best_test_iou:.8f}")
 
 
 if __name__ == '__main__':
@@ -89,10 +110,9 @@ if __name__ == '__main__':
     test_siamfc_dataset = SiamFCDataset(test_dataset, transform=ToTensor())
 
     batch_size = config.get_training_param('batch_size')
-    lr = config.get_training_param('lr')
-    epochs_num = config.get_training_param('epochs_num')
 
-    train_loader = DataLoader(train_siamfc_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_siamfc_dataset, batch_size=batch_size, shuffle=False)
+    num_workers = os.cpu_count() - 1
+    train_loader = DataLoader(train_siamfc_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    test_loader = DataLoader(test_siamfc_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
-    train(train_loader, test_loader, lr, epochs_num)
+    train(config, train_loader, test_loader)
