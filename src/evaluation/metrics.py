@@ -73,7 +73,7 @@ def match_boxes(df1, df2):
 
             #if intersection_area(box1, box2) / union_area(box1, box2) > 0.5:
             #if intersection_area(box1, box2) / area(box1) > 0.5:
-            if center_distance(box1, box2) / math.sqrt(area(box1)) < 1/3:
+            if center_distance(box1, box2) / (math.sqrt(area(box1)) + 1e-8) < 1/3:
                 m1.add(i)
                 m2.add(j)
                 tp += 1
