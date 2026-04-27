@@ -10,8 +10,7 @@ from datasets.synthetic_dataset import SyntheticDataset
 from datasets.manual_uav_dataset import ManualUAVDataset
 from datasets.uav123_dataset import UAV123Dataset
 from evaluation.metrics import match_boxes
-from models.trackers.siamfc import SiamFCNet, TrackerSiamFC
-from models.trackers.feature_extractors import AlexNetFeatureExtractor
+from models.trackers.tracker_factory import create_tracker
 from utils.paths import Paths
 
 TRUE_COLOR = (0, 255, 0)  # Green for ground truth
@@ -34,7 +33,7 @@ def main():
     if file_mode:
         tracker_results = pd.read_csv(args.tracker_results)
     else:
-        tracker = create_tracker(Paths.model_weights_dir() / "siamfc.pth")
+        tracker = create_tracker('nano')
 
     if len(video.source) == 0:
         print("Error: No frames found in the video source.")
@@ -100,12 +99,6 @@ def main():
                 continue
         elif cv2.waitKey(30) & 0xFF == ord('q'):
             break
-
-def create_tracker(model_path):
-    siamfc_model = SiamFCNet(AlexNetFeatureExtractor())
-    siamfc_model.load_state_dict(torch.load(model_path))
-    tracker = TrackerSiamFC(siamfc_model)
-    return tracker
 
 
 def draw_bounding_box(frame, bbox, color, thickness=2):
