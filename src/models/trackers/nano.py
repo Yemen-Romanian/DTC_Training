@@ -14,7 +14,7 @@ class TrackerNano(SingleObjectTrackerBase):
         params.backbone = str(model_dir / "nanotrack_backbone_sim.onnx")
         params.neckhead = str(model_dir / "nanotrack_head_sim.onnx")
         params.backend = cv2.dnn.DNN_BACKEND_DEFAULT
-        params.target = cv2.dnn.DNN_TARGET_CPU if device == 'cpu' else cv2.dnn.DNN_TARGET_CUDA
+        params.target = cv2.dnn.DNN_TARGET_CPU if device == 'cpu' else cv2.dnn.DNN_TARGET_OPENCL
         self.tracker = cv2.TrackerNano_create(params)
 
     def initialize(self, image, bbox):
