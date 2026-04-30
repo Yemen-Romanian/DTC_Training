@@ -1,8 +1,9 @@
 runs
 output/tracking/*
 output/training/*
-output/model_weights/*
-!output/model_weights/siamfc.pth
+output/tensorboard_runs
+output/*
+!output/model_weights/
 *.pt
 __pycache__
 .vscode

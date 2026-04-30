@@ -52,7 +52,8 @@ if __name__ == "__main__":
     output_dir.mkdir(parents=True, exist_ok=True)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    tracker = create_tracker('siamfc', state_dict=args.model_path, device=device)
+    # tracker = create_tracker('siamfc', state_dict=args.model_path, device=device)
+    tracker = create_tracker('nano')
 
     exporters = [
         CSVTrackerExporter(output_dir),
