@@ -6,6 +6,8 @@ import numpy as np
 
 from models.trackers.tracker import SingleObjectTrackerBase, SingleObjectTrackResult, BoundingBox
 
+SEARCH_FEATURE_SIZE = (22, 22)
+EXAMPLAR_FEATURE_SIZE = (6, 6)
 
 class SiamFCNet(nn.Module):
     def __init__(self, backbone):
@@ -19,13 +21,16 @@ class SiamFCNet(nn.Module):
         z: [B, 3, 127, 127] - examplar image
         x: [B, 3, 255, 255] - search image
         """
-        examplar_features = self.extract_features(z)  # [B, C, Hz, Wz]
-        search_features = self.extract_features(x)     # [B, C, Hx, Wx]
+        examplar_features = self.extract_features(z, output_size=EXAMPLAR_FEATURE_SIZE)  # [B, C, Hz, Wz]
+        search_features = self.extract_features(x, output_size=SEARCH_FEATURE_SIZE)     # [B, C, Hx, Wx]
         score = self.compute_score(examplar_features, search_features)  # [B, 17, 17]
         return score
     
-    def extract_features(self, image):
-        return self.backbone(image)
+    def extract_features(self, image, output_size=None):
+        features = self.backbone(image)
+        if output_size is not None:
+            features = F.interpolate(features, size=output_size, mode='bilinear', align_corners=False)
+        return features
     
     def compute_score(self, examplar_features, search_features):
         b, c, h, w = search_features.size()
@@ -113,7 +118,7 @@ class TrackerSiamFC(SingleObjectTrackerBase):
         z_tensor = z_tensor.to(self.device)
         
         with torch.no_grad():
-            self.examplar_features = self.model.extract_features(z_tensor)
+            self.examplar_features = self.model.extract_features(z_tensor, output_size=EXAMPLAR_FEATURE_SIZE)
 
     def track(self, image):
         scales = [self.scale_step ** i for i in range(-(self.scale_num // 2), self.scale_num // 2 + 1)]
@@ -125,7 +130,7 @@ class TrackerSiamFC(SingleObjectTrackerBase):
             crops.append(crop)
 
         x_batch = torch.from_numpy(np.stack(crops)).permute(0, 3, 1, 2).float().to(self.device) / 255.0
-        x_feat = self.model.extract_features(x_batch)
+        x_feat = self.model.extract_features(x_batch, output_size=SEARCH_FEATURE_SIZE)
 
         with torch.no_grad():
             z_feat = self.examplar_features.repeat(self.scale_num, 1, 1, 1)
@@ -150,7 +155,8 @@ class TrackerSiamFC(SingleObjectTrackerBase):
         r_max, c_max = np.unravel_index(best_score_map.argmax(), best_score_map.shape)
         disp_score = np.array([r_max - 8, c_max - 8])
 
-        disp_real = disp_score * 8 * ((self.s_x * chosen_scale) / self.ROI_SIZE)
+        network_stride = self.model.backbone.stride
+        disp_real = disp_score * network_stride * ((self.s_x * chosen_scale) / self.ROI_SIZE)
 
         self.pos += disp_real
 
