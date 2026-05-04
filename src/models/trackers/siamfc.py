@@ -121,11 +121,9 @@ class TrackerSiamFC(SingleObjectTrackerBase):
             self.examplar_features = self.model.extract_features(z_tensor, output_size=EXAMPLAR_FEATURE_SIZE)
 
     def track(self, image):
-        scales = [self.scale_step ** i for i in range(-(self.scale_num // 2), self.scale_num // 2 + 1)]
-
         crops = []
-        for s in scales:
-            cur_s_x = self.s_x * s
+        for s in self.scales:
+            cur_s_x = max(1.0, self.s_x * s)
             crop = self._get_subwindow(image, self.pos, self.ROI_SIZE, cur_s_x, image.mean(axis=(0, 1)))
             crops.append(crop)
 
@@ -141,16 +139,16 @@ class TrackerSiamFC(SingleObjectTrackerBase):
 
         scale_idx = np.argmax(np.amax(score_maps, axis=(1, 2)))
         best_score_map = score_maps[scale_idx]
-
-        print("Confidence:", best_score_map.max())
         best_score_map -= best_score_map.min()
         best_score_map /= (best_score_map.sum() + 1e-5)
         best_score_map = (1 - self.window_influence) * best_score_map + self.window_influence * self.window
 
-        chosen_scale = scales[scale_idx]
+        chosen_scale = self.scales[scale_idx]
         self.s_x = (1 - self.scale_lr) * self.s_x + self.scale_lr * (self.s_x * chosen_scale)
+        self.s_x = max(1.0, self.s_x)  # Ensure s_x does not become too small
 
         self.target_sz = (1 - self.scale_lr) * self.target_sz + self.scale_lr * (self.target_sz * chosen_scale)
+        self.target_size = np.maximum(self.target_sz, 2.0)  # Ensure target size does not become too small
 
         r_max, c_max = np.unravel_index(best_score_map.argmax(), best_score_map.shape)
         disp_score = np.array([r_max - 8, c_max - 8])
