@@ -106,8 +106,8 @@ if __name__ == '__main__':
     train_dataset = MixedDataset(config.get_train_paths())
     test_dataset = MixedDataset(config.get_test_paths())
 
-    train_siamfc_dataset = SiamFCDataset(train_dataset, transform=ToTensor())
-    test_siamfc_dataset = SiamFCDataset(test_dataset, transform=ToTensor())
+    train_siamfc_dataset = SiamFCDataset(train_dataset, transform=ToTensor(), apply_augmentation=False)
+    test_siamfc_dataset = SiamFCDataset(test_dataset, transform=ToTensor(), apply_augmentation=False)
 
     batch_size = config.get_training_param('batch_size')
 

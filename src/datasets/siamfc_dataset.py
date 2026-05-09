@@ -6,14 +6,15 @@ import numpy as np
 import bisect
 import matplotlib.pyplot as plt
 
+import torchvision.transforms as transforms
 from torchvision.transforms import ToTensor
 
 
 class SiamFCDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset, transform=None):
+    def __init__(self, dataset, apply_augmentation=False):
         self.dataset = dataset
+        self.apply_augmentation = apply_augmentation
         self.videos = self.dataset.parse()
-        self.transform = transform
         self.min_gap = 2
         self.max_gap = 10
         print(f"Total videos: {len(self.videos)}")
@@ -21,14 +22,17 @@ class SiamFCDataset(torch.utils.data.Dataset):
         self.video_slots = [max(0, len(v.gt_rects) - self.min_gap) for v in self.videos]
     
         self.cumulative_slots = np.cumsum(self.video_slots).tolist()
-        self.label = torch.from_numpy(SiamFCDataset.create_label(size=17, radius=16, stride=8))
         
-    def create_label(size, radius, stride):
+    def create_label(size, radius, stride, offset=(0, 0)):
         tc = (size - 1) / 2
-        y, x = np.ogrid[-tc:size-tc, -tc:size-tc]
-        
+        y, x = np.ogrid[-tc - offset[0]:size-tc - offset[0],
+                        -tc - offset[1]:size-tc - offset[1]]
+        y = np.round(y)
+        x = np.round(x)
+                
         dist = np.sqrt(x**2 + y**2) * stride
         labels = (dist <= radius).astype(np.float32)
+        assert labels.shape == (size, size), f"Label shape mismatch: expected ({size}, {size}), got {labels.shape}"
         return labels
     
     def get_subwindow_avg(im, pos, model_sz, original_sz, avg_chans):
@@ -90,17 +94,45 @@ class SiamFCDataset(torch.utils.data.Dataset):
         s_z = get_sz(gt_z)
         s_x = s_z * (255 / 127)
 
+        if self.apply_augmentation:
+            x_jitter_low = -gt_x[2] * 0.2
+            x_jitter_high = gt_x[2] * 0.2
+            y_jitter_low = -gt_x[3] * 0.2
+            y_jitter_high = gt_x[3] * 0.2
+            x_jitter = np.random.uniform(low=x_jitter_low, high=x_jitter_high)
+            y_jitter = np.random.uniform(low=y_jitter_low, high=y_jitter_high)
+            scale_jitter = np.random.uniform(low=0.95, high=1.05)
+            offset_y = (-y_jitter * (255.0 / s_x)) / 8.0
+            offset_x = (-x_jitter * (255.0 / s_x)) / 8.0
+        else:
+            x_jitter = 0
+            y_jitter = 0
+            offset_y = 0
+            offset_x = 0
+            scale_jitter = 1.0
+
         pos_z = [gt_z[1] + gt_z[3]/2, gt_z[0] + gt_z[2]/2]
-        pos_x = [gt_x[1] + gt_x[3]/2, gt_x[0] + gt_x[2]/2]
+        pos_x = [gt_x[1] + gt_x[3]/2 + y_jitter, gt_x[0] + gt_x[2]/2 + x_jitter]
+        s_x *= scale_jitter
 
         z_crop = SiamFCDataset.get_subwindow_avg(img_z, pos_z, 127, round(s_z), avg_chans)
         x_crop = SiamFCDataset.get_subwindow_avg(img_x, pos_x, 255, round(s_x), avg_chans)
+        label = SiamFCDataset.create_label(size=17, radius=16, stride=8, offset=(offset_y, offset_x))
 
-        if self.transform:
-            z_crop = self.transform(z_crop)
-            x_crop = self.transform(x_crop)
+        if self.apply_augmentation:
+            if np.random.rand() < 0.5:
+                z_crop = np.flip(z_crop, dims=[2])
+                x_crop = np.flip(x_crop, dims=[2])
+                label = np.flip(label, dims=[1])
 
-        return z_crop, x_crop
+            color_jitter = transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)
+            x_crop = color_jitter(x_crop)
+
+        z_crop = torch.from_numpy(z_crop).permute(2, 0, 1).float() / 255.0
+        x_crop = torch.from_numpy(x_crop).permute(2, 0, 1).float() / 255.0
+        label = torch.from_numpy(label).float()
+
+        return z_crop, x_crop, label
         
     def __len__(self):
         return self.cumulative_slots[-1] if self.cumulative_slots else 0
@@ -119,8 +151,8 @@ class SiamFCDataset(torch.utils.data.Dataset):
         high = min(len(video.gt_rects) - 1, exemplar_frame_index + self.max_gap)
         search_frame_index = random.randint(low, high)
         
-        examplar_image, search_image = self._create_data_point(video_index, exemplar_frame_index, search_frame_index)
-        return examplar_image, search_image, self.label
+        examplar_image, search_image, label = self._create_data_point(video_index, exemplar_frame_index, search_frame_index)
+        return examplar_image, search_image, label
 
 if __name__ == '__main__':
     dataset = SiamFCDataset(r"path", 
