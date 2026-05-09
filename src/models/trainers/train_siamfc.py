@@ -26,7 +26,8 @@ def train(config, train_loader, test_loader):
 
     model = SiamFCNet(AlexNetFeatureExtractor())
     loss = BalancedLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=5e-4)
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, mode="min", factor=0.5, patience=5, verbose=True)
 
     logger.info(f"Is CUDA available? {torch.cuda.is_available()}")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -76,6 +77,7 @@ def train(config, train_loader, test_loader):
             test_loss /= num_samples
             logger.add_scalar("test_loss", test_loss, epoch)
             logger.info(f"Epoch {epoch+1}/{epoch_num}, Test Loss: {test_loss:.8f}") 
+            lr_scheduler.step(test_loss)
         pbar.close()
 
         if epoch % evaluation_interval == 0:
@@ -106,7 +108,7 @@ if __name__ == '__main__':
     train_dataset = MixedDataset(config.get_train_paths())
     test_dataset = MixedDataset(config.get_test_paths())
 
-    train_siamfc_dataset = SiamFCDataset(train_dataset, transform=ToTensor(), apply_augmentation=False)
+    train_siamfc_dataset = SiamFCDataset(train_dataset, transform=ToTensor(), apply_augmentation=True)
     test_siamfc_dataset = SiamFCDataset(test_dataset, transform=ToTensor(), apply_augmentation=False)
 
     batch_size = config.get_training_param('batch_size')
