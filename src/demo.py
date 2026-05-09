@@ -44,8 +44,8 @@ def main():
     cv2.setWindowProperty("Tracking Demo", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
     for frame_idx, frame in enumerate(video.source):
-        gt_frame = frame.copy()
-        results_frame = frame.copy()
+        gt_frame = cv2.cvtColor(frame.copy(), cv2.COLOR_RGB2BGR)
+        results_frame = cv2.cvtColor(frame.copy(), cv2.COLOR_RGB2BGR) 
 
         if frame_idx == 0 and not file_mode:
             tracker.initialize(frame, video.gt_rects[0][1])

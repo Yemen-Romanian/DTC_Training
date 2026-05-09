@@ -90,6 +90,7 @@ class VisualizerTrackerExporter(BaseExporter):
         self.frame_idx += 1
         x, y, w, h = result.bbox.x, result.bbox.y, result.bbox.width, result.bbox.height
         vis_frame = frame.copy()
+        vis_frame = cv2.cvtColor(vis_frame, cv2.COLOR_RGB2BGR)
         vis_frame = cv2.rectangle(vis_frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
         cv2.imwrite(self.output_dir / f"frame_{self.frame_idx:04d}.jpg", vis_frame)
 

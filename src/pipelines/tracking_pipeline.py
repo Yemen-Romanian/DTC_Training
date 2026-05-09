@@ -21,8 +21,9 @@ class TrackingPipeline:
             return
         
         initial_frame = next(video_source)
+        initial_frame_bgr = cv2.cvtColor(initial_frame, cv2.COLOR_RGB2BGR)
 
-        roi = cv2.selectROI("Select Object to Track", initial_frame, fromCenter=False, showCrosshair=True)
+        roi = cv2.selectROI("Select Object to Track", initial_frame_bgr, fromCenter=False, showCrosshair=True)
         self.tracker.initialize(initial_frame, roi)
         cv2.destroyWindow("Select Object to Track")
 

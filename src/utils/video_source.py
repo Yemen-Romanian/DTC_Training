@@ -29,6 +29,7 @@ class VideoSource:
             raise StopIteration
         frame_path = self.frames[self.current_frame_index]
         frame = cv2.imread(str(frame_path))
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         self.current_frame_index += 1
         return frame
         
@@ -36,7 +37,9 @@ class VideoSource:
         if index >= len(self.frames):
             raise IndexError(f"Invalid frame index {index} for video with length {len(self.frames)}")
         frame_path = self.frames[index]
-        return cv2.imread(str(frame_path))
+        frame = cv2.imread(str(frame_path))
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        return frame
         
     def _extract_video(self):
         video_name = self.source.stem
