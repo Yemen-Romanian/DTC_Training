@@ -82,8 +82,8 @@ def train(config, train_loader, test_loader):
 
         if epoch % evaluation_interval == 0:
             logger.info(f"Performing evaluation on test set...")
-            tracker = create_tracker('siamfc', state_dict=model.state_dict())
-            results = evaluate_tracker(tracker, config)
+            state_dict_cpu = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            results = evaluate_tracker(state_dict_cpu, config)
             avg_results = calculate_average_metrics(results)
 
             for avg_metric_name, avg_metric_value in avg_results.items():

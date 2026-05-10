@@ -9,6 +9,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from datasets.dataset_factory import create_dataset
 from evaluation.metrics import match_boxes
 from models.trackers.tracker import SingleObjectTrackerBase
+from models.trackers.tracker_factory import create_tracker
 from utils.config import Config
 
 
@@ -25,10 +26,10 @@ def _convert_gt_for_evaluation(frame_id, gt_rect, class_id=0, track_id=0):
     }])
 
 
-def _evaluate_single_video(tracker, dataset_label, video):
+def _evaluate_single_video(state_dict, dataset_label, video):
     gt_rects = video.gt_rects
     current_gt_index = 0
-    tracker.to_device('cuda' if torch.cuda.is_available() else 'cpu')
+    tracker = create_tracker('siamfc', state_dict=state_dict, device='cuda' if torch.cuda.is_available() else 'cpu')
 
     video_metrics = {
         'iou': [],
@@ -69,7 +70,7 @@ def _evaluate_single_video(tracker, dataset_label, video):
     return dataset_label, video.label, video_metrics
 
 
-def evaluate_tracker(tracker: SingleObjectTrackerBase, config: Config, max_workers=None):
+def evaluate_tracker(state_dict, config: Config, max_workers=None):
     test_paths_dict = config.get_test_paths()
     evaluation_results = {}
     all_videos = {label: create_dataset(label, path).parse() for label, path in test_paths_dict.items()}
@@ -77,14 +78,13 @@ def evaluate_tracker(tracker: SingleObjectTrackerBase, config: Config, max_worke
     pbar = tqdm(total=overall_number_of_videos, desc='Evaluating on test videos')
 
     worker_count = max_workers or max((os.cpu_count() or 2) - 1, 1)
-    tracker.to_device('cpu')
 
     with ProcessPoolExecutor(max_workers=worker_count) as executor:
         future_to_video = {}
         for dataset_label, video_list in all_videos.items():
             evaluation_results[dataset_label] = {}
             for video in video_list:
-                future = executor.submit(_evaluate_single_video, tracker, dataset_label, video)
+                future = executor.submit(_evaluate_single_video, state_dict, dataset_label, video)
                 future_to_video[future] = (dataset_label, video.label)
 
         for future in as_completed(future_to_video):
