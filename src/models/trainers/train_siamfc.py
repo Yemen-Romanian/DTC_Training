@@ -5,26 +5,24 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from datasets.siamfc_dataset import SiamFCDataset
-from torchvision.transforms import ToTensor
 import os
 
-from models.trackers.siamfc import SiamFCNet
-from models.trackers.feature_extractors import AlexNetFeatureExtractor
 from models.losses import BalancedLoss
 from utils.config import Config
 from datasets.mixed_dataset import MixedDataset
 from evaluation.tracker_evaluation import evaluate_tracker, calculate_average_metrics
-from models.trackers.tracker_factory import create_tracker
+from models.model_factory import create_model
 from utils.experiment_logger import ExperimentLogger
 
 
 def train(config, train_loader, test_loader):
     lr = config.get_training_param('lr')
     epoch_num = config.get_training_param('epochs_num')
+    model_config = config.get_model_config()
 
     logger = ExperimentLogger(f"siamfc_training_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}")
 
-    model = SiamFCNet(AlexNetFeatureExtractor())
+    model = create_model(model_config)
     loss = BalancedLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=5e-4)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, mode="min", factor=0.5, patience=5, verbose=True)
@@ -41,6 +39,7 @@ def train(config, train_loader, test_loader):
         pbar = tqdm(len(train_loader), desc=f"Epoch {epoch+1}/{epoch_num}, loss: {0.0}", total=len(train_loader))
         epoch_loss = 0.0
         num_samples = 0
+        logger.info(f"Current value of learning rate: {lr_scheduler.get_last_lr()[0]:.8f}")
         
         for batch_idx, (examplar, search, gt) in enumerate(train_loader):
             examplar, search, gt = examplar.to(device), search.to(device), gt.to(device)
@@ -82,7 +81,7 @@ def train(config, train_loader, test_loader):
 
         if epoch % evaluation_interval == 0:
             logger.info(f"Performing evaluation on test set...")
-            results = evaluate_tracker(model.state_dict(), config, tracker_type='siamfc')
+            results = evaluate_tracker(model.state_dict(), config)
             avg_results = calculate_average_metrics(results)
 
             for avg_metric_name, avg_metric_value in avg_results.items():

@@ -1,26 +1,30 @@
 import torch
 
-from models.trackers.siamfc import SiamFCNet, TrackerSiamFC
-from models.trackers.feature_extractors import AlexNetFeatureExtractor
+from models.trackers.siamfc import TrackerSiamFC
 from models.trackers.nano import TrackerNano
+from models.model_factory import create_model
 
 
-def create_tracker(name: str, state_dict: str|dict = None, device: str = 'cpu'):
-    if name == 'siamfc':
-        model = SiamFCNet(AlexNetFeatureExtractor())
+def create_tracker(model_config: dict, state_dict: str|dict = None, device: str = None):
+    model_id = model_config['id']
+    device = device or model_config.get('params', {}).get('device', 'cpu')
+
+    if model_id == 'siamfc':
+        model = create_model(model_config)
+        
         if isinstance(state_dict, str):
-            weights = torch.load(state_dict)
+            weights = torch.load(state_dict, map_location=device)
             model.load_state_dict(weights)
         elif isinstance(state_dict, dict):
             model.load_state_dict(state_dict)
-        else:
+        elif state_dict is not None:
             raise TypeError(f"Inappropriate type for model state dict. Expected str path or dictionary, found {type(state_dict)}")
         
         tracker = TrackerSiamFC(model, device)
 
-    elif name == 'nano':
+    elif model_id == 'nano':
         tracker = TrackerNano(device=device)
     else:
-        raise ValueError(f"Unknown tracker type {name}. Available trackers: siamfc")
+        raise ValueError(f"Unknown tracker type {model_id}. Available trackers: siamfc, nano")
     
     return tracker

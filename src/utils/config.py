@@ -17,3 +17,6 @@ class Config:
     def get_training_param(self, param: str):
         return self._config_data["training_params"][param]
 
+    def get_model_config(self):
+        return self._config_data["model"]
+

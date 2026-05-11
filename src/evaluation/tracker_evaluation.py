@@ -24,10 +24,10 @@ def _convert_gt_for_evaluation(frame_id, gt_rect, class_id=0, track_id=0):
     }])
 
 
-def _evaluate_single_video(tracker_type, state_dict, dataset_label, video, device='cpu'):
+def _evaluate_single_video(model_config, state_dict, dataset_label, video, device='cpu'):
     gt_rects = video.gt_rects
     current_gt_index = 0
-    tracker = create_tracker(tracker_type, state_dict=state_dict, device=device)
+    tracker = create_tracker(model_config, state_dict=state_dict, device=device)
 
     video_metrics = {
         'iou': [],
@@ -68,8 +68,9 @@ def _evaluate_single_video(tracker_type, state_dict, dataset_label, video, devic
     return dataset_label, video.label, video_metrics
 
 
-def evaluate_tracker(state_dict, config: Config, tracker_type: str, device='cpu', max_workers=None):
+def evaluate_tracker(state_dict, config: Config, device='cpu', max_workers=None):
     test_paths_dict = config.get_test_paths()
+    model_config = config.get_model_config()
     evaluation_results = {}
     all_videos = {label: create_dataset(label, path).parse() for label, path in test_paths_dict.items()}
     overall_number_of_videos = sum(len(videos) for videos in all_videos.values())
@@ -85,7 +86,7 @@ def evaluate_tracker(state_dict, config: Config, tracker_type: str, device='cpu'
         for dataset_label, video_list in all_videos.items():
             evaluation_results[dataset_label] = {}
             for video in video_list:
-                future = executor.submit(_evaluate_single_video, tracker_type, shared_state_dict, dataset_label, video, device)
+                future = executor.submit(_evaluate_single_video, model_config, shared_state_dict, dataset_label, video, device)
                 future_to_video[future] = (dataset_label, video.label)
 
         with tqdm(total=overall_number_of_videos, desc='Evaluating on test videos') as pbar:
