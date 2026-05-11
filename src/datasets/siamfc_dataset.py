@@ -5,6 +5,7 @@ import numpy as np
 import bisect
 import matplotlib.pyplot as plt
 
+from datasets.mixed_dataset import MixedDataset
 from datasets.utils.tracking_augmentation_utils import SiameseAugmentor, get_subwindow, create_label, sample_translation_jitter, sample_scale_jitter
 
 
@@ -83,31 +84,44 @@ class SiamFCDataset(torch.utils.data.Dataset):
         
         examplar_image, search_image, label = self._create_data_point(video_index, exemplar_frame_index, search_frame_index)
         return examplar_image, search_image, label
+    
+def demo(paths, num_samples=3):
+    inner_dataset = MixedDataset(paths)
+    dataset = SiamFCDataset(inner_dataset, apply_augmentation=True)
+
+    if len(dataset) > 0:
+        fig, axes = plt.subplots(num_samples, 3, figsize=(15, 5 * num_samples))
+
+        for i in range(num_samples):
+            sample_idx = np.random.randint(0, len(dataset))
+            examplar, search, gt = dataset[sample_idx]
+
+            search_img = search.numpy().transpose(1, 2, 0)
+            examplar_img = examplar.numpy().transpose(1, 2, 0)
+            gt_img = gt.numpy()
+
+            axes[i, 0].imshow(examplar_img)
+            axes[i, 0].set_title(f"Exemplar (z) {examplar_img.shape[:2]}")
+            axes[i, 0].axis('off')
+
+            axes[i, 1].imshow(search_img)
+            axes[i, 1].set_title(f"Search Area (x) {search_img.shape[:2]}")
+            axes[i, 1].axis('off')
+
+            im_gt = axes[i, 2].imshow(gt_img, cmap='jet', interpolation='nearest')
+            axes[i, 2].set_title(f"Ground Truth {gt_img.shape}")
+            axes[i, 2].axis('off')
+            if i == 0:
+                plt.colorbar(im_gt, ax=axes[i, 2], fraction=0.046, pad=0.04)
+
+        plt.tight_layout()
+        plt.show()
+    else:
+        print("Dataset is empty. Check your paths.")
 
 if __name__ == '__main__':
-    dataset = SiamFCDataset(r"path", 
-                            transform=ToTensor())
-
-    sample_idx = np.random.randint(0, len(dataset)-1)
-    examplar, search, gt = dataset[sample_idx]
-    search = search.numpy().transpose(1, 2, 0)
-    examplar = examplar.numpy().transpose(1, 2, 0)
-    gt = gt.numpy()
-
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-
-    axes[0].imshow(examplar)
-    axes[0].set_title(f"Exemplar (z) {examplar.shape[:2]}")
-    axes[0].axis('off')
-
-    axes[1].imshow(search)
-    axes[1].set_title(f"Search Area (x) {search.shape[:2]}")
-    axes[1].axis('off')
-
-    im3 = axes[2].imshow(gt, cmap='jet', interpolation='nearest')
-    axes[2].set_title(f"Ground Truth {gt.shape}")
-    plt.colorbar(im3, ax=axes[2], fraction=0.046, pad=0.04)
-    axes[2].axis('off')
-
-    plt.tight_layout()
-    plt.show()
+    # To run this example, provide valid paths to your datasets
+    paths = {
+        'synthetic': r"C:\Users\yevhe\PhDProjects\datasets\Synthetic\debug_test",
+    }
+    demo(paths, num_samples=5)
