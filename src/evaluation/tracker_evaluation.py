@@ -2,13 +2,11 @@ import os
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
-import torch
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from datasets.dataset_factory import create_dataset
 from evaluation.metrics import match_boxes
-from models.trackers.tracker import SingleObjectTrackerBase
 from models.trackers.tracker_factory import create_tracker
 from utils.config import Config
 
@@ -26,10 +24,10 @@ def _convert_gt_for_evaluation(frame_id, gt_rect, class_id=0, track_id=0):
     }])
 
 
-def _evaluate_single_video(state_dict, dataset_label, video):
+def _evaluate_single_video(tracker_type, state_dict, dataset_label, video, device='cpu'):
     gt_rects = video.gt_rects
     current_gt_index = 0
-    tracker = create_tracker('siamfc', state_dict=state_dict, device='cuda' if torch.cuda.is_available() else 'cpu')
+    tracker = create_tracker(tracker_type, state_dict=state_dict, device=device)
 
     video_metrics = {
         'iou': [],
@@ -38,7 +36,7 @@ def _evaluate_single_video(state_dict, dataset_label, video):
         'center_dist_norm': []
     }
 
-    for frame_idx in tqdm(range(len(video.source)), desc=f"Processing video {video.label}", total=len(video.source)):
+    for frame_idx in range(len(video.source)):
         frame = video.source[frame_idx]
         if frame_idx == 0:
             tracker.initialize(frame, gt_rects[0][1])
@@ -70,30 +68,33 @@ def _evaluate_single_video(state_dict, dataset_label, video):
     return dataset_label, video.label, video_metrics
 
 
-def evaluate_tracker(state_dict, config: Config, max_workers=None):
+def evaluate_tracker(state_dict, config: Config, tracker_type: str, device='cpu', max_workers=None):
     test_paths_dict = config.get_test_paths()
     evaluation_results = {}
     all_videos = {label: create_dataset(label, path).parse() for label, path in test_paths_dict.items()}
     overall_number_of_videos = sum(len(videos) for videos in all_videos.values())
-    pbar = tqdm(total=overall_number_of_videos, desc='Evaluating on test videos')
+    
+    # Prepare shared memory for state_dict
+    shared_state_dict = {k: v.cpu().detach().clone().share_memory_() for k, v in state_dict.items()}
 
     worker_count = max_workers or max((os.cpu_count() or 2) - 1, 1)
-
+    
+    # On Windows, we must use a context with 'spawn' or just use the default
     with ProcessPoolExecutor(max_workers=worker_count) as executor:
         future_to_video = {}
         for dataset_label, video_list in all_videos.items():
             evaluation_results[dataset_label] = {}
             for video in video_list:
-                future = executor.submit(_evaluate_single_video, state_dict, dataset_label, video)
+                future = executor.submit(_evaluate_single_video, tracker_type, shared_state_dict, dataset_label, video, device)
                 future_to_video[future] = (dataset_label, video.label)
 
-        for future in as_completed(future_to_video):
-            dataset_label, video_label, video_metrics = future.result()
-            evaluation_results.setdefault(dataset_label, {})[video_label] = video_metrics
-            pbar.update(1)
-            pbar.set_description(f'Processed {pbar.n}/{overall_number_of_videos} videos')
+        with tqdm(total=overall_number_of_videos, desc='Evaluating on test videos') as pbar:
+            for future in as_completed(future_to_video):
+                dataset_label, video_label, video_metrics = future.result()
+                evaluation_results.setdefault(dataset_label, {})[video_label] = video_metrics
+                pbar.update(1)
+                pbar.set_description(f'Processed {pbar.n}/{overall_number_of_videos} videos')
 
-    pbar.close()
     return evaluation_results
 
 
