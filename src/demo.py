@@ -33,7 +33,19 @@ def main():
     if file_mode:
         tracker_results = pd.read_csv(args.tracker_results)
     else:
-        tracker = create_tracker('nano')
+        # Default config for demo purposes
+        model_config = {
+            'id': 'siamfc',
+            'backbone': {
+                'type': 'AlexNet',
+                'freeze': False
+            },
+            'params': {
+                'device': 'cuda' if torch.cuda.is_available() else 'cpu'
+            }
+        }
+        state_dict_path = str(Paths.model_weights_dir() / "siamfc.pth")
+        tracker = create_tracker(model_config, state_dict=state_dict_path)
 
     if len(video.source) == 0:
         print("Error: No frames found in the video source.")
