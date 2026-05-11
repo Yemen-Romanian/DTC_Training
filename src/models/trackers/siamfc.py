@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import cv2
 import numpy as np
 
 from models.trackers.tracker import SingleObjectTrackerBase, SingleObjectTrackResult, BoundingBox
+from datasets.utils.tracking_augmentation_utils import get_subwindow
 
 SEARCH_FEATURE_SIZE = (22, 22)
 EXAMPLAR_FEATURE_SIZE = (6, 6)
@@ -69,43 +69,6 @@ class TrackerSiamFC(SingleObjectTrackerBase):
 
         self.scales = [self.scale_step ** i for i in range(-(self.scale_num // 2), self.scale_num // 2 + 1)]
 
-
-    def _get_subwindow(self, image, pos, model_sz, original_sz, avg_chans):
-        sz = original_sz
-        im_sz = image.shape
-        
-        c = (sz + 1) / 2
-        context_xmin = round(pos[1] - c)
-        context_xmax = context_xmin + sz - 1
-        context_ymin = round(pos[0] - c)
-        context_ymax = context_ymin + sz - 1
-        
-        left_pad = int(max(0, -context_xmin))
-        top_pad = int(max(0, -context_ymin))
-        right_pad = int(max(0, context_xmax - im_sz[1] + 1))
-        bottom_pad = int(max(0, context_ymax - im_sz[0] + 1))
-
-        context_xmin = int(context_xmin + left_pad)
-        context_xmax = int(context_xmax + left_pad)
-        context_ymin = int(context_ymin + top_pad)
-        context_ymax = int(context_ymax + top_pad)
-
-        if any([top_pad, bottom_pad, left_pad, right_pad]):
-            te_im = np.full((im_sz[0] + top_pad + bottom_pad, 
-                            im_sz[1] + left_pad + right_pad, 3), 
-                            avg_chans, dtype=np.uint8)
-            te_im[top_pad:top_pad + im_sz[0], left_pad:left_pad + im_sz[1]] = image
-            im_patch = te_im[context_ymin:context_ymax + 1, 
-                             context_xmin:context_xmax + 1]
-        else:
-            im_patch = image[context_ymin:context_ymax + 1, 
-                             context_xmin:context_xmax + 1]
-
-        if not np.array_equal(model_sz, original_sz):
-            im_patch = cv2.resize(im_patch, (model_sz, model_sz))
-            
-        return im_patch
-
     def initialize(self, image, bbox):
         self.pos = np.array([bbox[1] + bbox[3]/2, bbox[0] + bbox[2]/2])
         self.target_sz = np.array([bbox[3], bbox[2]])
@@ -113,7 +76,7 @@ class TrackerSiamFC(SingleObjectTrackerBase):
         context = 0.5 * self.target_sz.sum()
         self.s_z = np.sqrt((self.target_sz[0] + context) * (self.target_sz[1] + context))
         self.s_x = self.s_z * (self.ROI_SIZE / self.EXAMPLAR_SIZE)
-        z_crop = self._get_subwindow(image, self.pos, self.EXAMPLAR_SIZE, self.s_z, image.mean(axis=(0, 1)))
+        z_crop = get_subwindow(image, self.pos, self.EXAMPLAR_SIZE, self.s_z, image.mean(axis=(0, 1)))
         z_tensor = torch.from_numpy(z_crop).permute(2, 0, 1).float().unsqueeze(0) / 255.0
         z_tensor = z_tensor.to(self.device)
         
@@ -124,7 +87,7 @@ class TrackerSiamFC(SingleObjectTrackerBase):
         crops = []
         for s in self.scales:
             cur_s_x = max(1.0, self.s_x * s)
-            crop = self._get_subwindow(image, self.pos, self.ROI_SIZE, cur_s_x, image.mean(axis=(0, 1)))
+            crop = get_subwindow(image, self.pos, self.ROI_SIZE, cur_s_x, image.mean(axis=(0, 1)))
             crops.append(crop)
 
         x_batch = torch.from_numpy(np.stack(crops)).permute(0, 3, 1, 2).float().to(self.device) / 255.0
