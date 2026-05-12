@@ -45,27 +45,34 @@ def get_subwindow(image, pos, model_sz, original_sz, avg_chans):
         
     return im_patch
 
-def create_label(size, radius, stride, offset=(0, 0)):
+def create_label(size, radius, stride, offset=(0, 0), label_type='gaussian', sigma=1.0):
     """
-    Creates a binary ground truth response map (label) for Siamese tracking.
+    Creates a ground truth response map (label) for tracker training.
     """
 
     tc = (size - 1) / 2
-    y, x = np.ogrid[-tc - offset[0]:size-tc - offset[0],
-                    -tc - offset[1]:size-tc - offset[1]]
-    y = np.round(y)
-    x = np.round(x)
-            
-    dist = np.sqrt(x**2 + y**2) * stride
-    labels = (dist <= radius).astype(np.float32)
+    y_idx, x_idx = np.ogrid[:size, :size]
+
+    dy = y_idx - tc - offset[0]
+    dx = x_idx - tc - offset[1]
+
+    if label_type == 'binary':
+        dist = np.sqrt(dx**2 + dy**2) * stride
+        labels = (dist <= radius).astype(np.float32)
+    elif label_type == 'gaussian':
+        dist_sq = dx**2 + dy**2
+        labels = np.exp(-dist_sq / (2 * (sigma**2))).astype(np.float32)
+        labels[labels < 1e-3] = 0 # Zero out negligible values
+    else:
+        raise ValueError(f"Unsupported label type: {label_type}")
+
     assert labels.shape == (size, size), f"Label shape mismatch: expected ({size}, {size}), got {labels.shape}"
     return labels
 
-def sample_translation_jitter(bbox, factor=0.2):
+def sample_translation_jitter(bbox, factor=0.1):
     """
     Samples random translation jitter based on the bounding box size.
     """
-
     w, h = bbox[2], bbox[3]
     x_jitter = np.random.uniform(-w * factor, w * factor)
     y_jitter = np.random.uniform(-h * factor, h * factor)
