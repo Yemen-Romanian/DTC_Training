@@ -2,6 +2,7 @@ import torch
 
 from models.trackers.siamfc import TrackerSiamFC
 from models.trackers.nano import TrackerNano
+from models.trackers.vit import TrackerViT
 from models.model_factory import create_model
 
 
@@ -24,6 +25,8 @@ def create_tracker(model_config: dict, state_dict: str|dict = None, device: str 
 
     elif model_id == 'nano':
         tracker = TrackerNano(device=device)
+    elif model_id == 'vit':
+        tracker = TrackerViT()
     else:
         raise ValueError(f"Unknown tracker type {model_id}. Available trackers: siamfc, nano")
     
