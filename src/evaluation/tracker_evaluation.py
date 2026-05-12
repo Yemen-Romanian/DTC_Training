@@ -36,7 +36,7 @@ def _evaluate_single_video(model_config, state_dict, dataset_label, video, devic
         'center_dist_norm': []
     }
 
-    for frame_idx in range(len(video.source)):
+    for frame_idx in tqdm(range(len(video.source)), desc=f"Video: {video.label}", leave=False):
         frame = video.source[frame_idx]
         if frame_idx == 0:
             tracker.initialize(frame, gt_rects[0][1])
