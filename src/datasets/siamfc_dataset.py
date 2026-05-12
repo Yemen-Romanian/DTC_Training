@@ -61,7 +61,7 @@ class SiamFCDataset(torch.utils.data.Dataset):
 
         z_crop = get_subwindow(img_z, pos_z, self.EXAMPLAR_SIZE, round(s_z), avg_chans)
         x_crop = get_subwindow(img_x, pos_x, self.ROI_SIZE, round(s_x), avg_chans)
-        label = create_label(size=17, radius=16, stride=8, offset=(offset_y, offset_x))
+        label = create_label(size=17, radius=16, stride=8, offset=(offset_y, offset_x), label_type='binary')
 
         return self.augmentor(z_crop, x_crop, label)
         
@@ -122,6 +122,6 @@ def demo(paths, num_samples=3):
 if __name__ == '__main__':
     # To run this example, provide valid paths to your datasets
     paths = {
-        'synthetic': r"C:\Users\yevhe\PhDProjects\datasets\Synthetic\debug_test",
+        "uav123": "C:\\Users\\yevhe\\PhDProjects\\datasets\\UAV123_Test",
     }
     demo(paths, num_samples=5)
