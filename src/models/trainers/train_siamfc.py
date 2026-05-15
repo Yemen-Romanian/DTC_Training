@@ -15,7 +15,7 @@ from models.model_factory import create_model
 from utils.experiment_logger import ExperimentLogger
 
 
-def train(config, train_loader, test_loader):
+def train(config, train_loader, val_loader):
     lr = config.get_training_param('lr')
     epoch_num = config.get_training_param('epochs_num')
     model_config = config.get_model_config()
@@ -31,7 +31,7 @@ def train(config, train_loader, test_loader):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    best_test_iou = 0.0
+    best_val_iou = 0.0
     evaluation_interval = config.get_training_param('evaluation_interval')
 
     for epoch in range(epoch_num):
@@ -57,31 +57,31 @@ def train(config, train_loader, test_loader):
         logger.add_scalar("train_loss", epoch_loss / num_samples, epoch)
         pbar.close()
 
-        if test_loader is None:
+        if val_loader is None:
             continue
 
         model.eval()
-        pbar = tqdm(len(test_loader), desc=f"Evaluating on test set", total=len(test_loader))
+        pbar = tqdm(len(val_loader), desc=f"Evaluating on validation set", total=len(val_loader))
         with torch.no_grad():
-            test_loss = 0.0
+            val_loss = 0.0
             num_samples = 0
-            for examplar, search, gt in test_loader:
+            for examplar, search, gt in val_loader:
                 examplar, search, gt = examplar.to(device), search.to(device), gt.to(device)
                 prediction = model(examplar, search)
                 batch_loss = loss(prediction, gt).sum().item()
-                test_loss += batch_loss
+                val_loss += batch_loss
                 num_samples += gt.size(0)
                 pbar.update(1)
 
-            test_loss /= num_samples
-            logger.add_scalar("test_loss", test_loss, epoch)
-            logger.info(f"Epoch {epoch+1}/{epoch_num}, Test Loss: {test_loss:.8f}") 
-            lr_scheduler.step(test_loss)
+            val_loss /= num_samples
+            logger.add_scalar("val_loss", val_loss, epoch)
+            logger.info(f"Epoch {epoch+1}/{epoch_num}, Validation Loss: {val_loss:.8f}") 
+            lr_scheduler.step(val_loss)
         pbar.close()
 
         if epoch % evaluation_interval == 0:
-            logger.info(f"Performing evaluation on test set...")
-            results = evaluate_tracker(model.state_dict(), config)
+            logger.info(f"Performing evaluation on validation set...")
+            results = evaluate_tracker(model.state_dict(), config, config.get_val_paths())
             avg_results = calculate_average_metrics(results)
 
             for avg_metric_name, avg_metric_value in avg_results.items():
@@ -91,10 +91,10 @@ def train(config, train_loader, test_loader):
             logger.log_dict(avg_results, f"average_evaluation_results_epoch_{epoch+1}.json")
 
             logger.info(f"Value of new metrics: {avg_results}")
-            if avg_results["iou"] > best_test_iou:
-                best_test_iou = avg_results["iou"]
+            if avg_results["iou"] > best_val_iou:
+                best_val_iou = avg_results["iou"]
                 logger.log_model(model)
-                logger.info(f"New best model saved with test IoU: {best_test_iou:.8f}")
+                logger.info(f"New best model saved with validation IoU: {best_val_iou:.8f}")
 
 
 if __name__ == '__main__':
@@ -104,15 +104,15 @@ if __name__ == '__main__':
 
     config = Config(args.config_path)
     train_dataset = MixedDataset(config.get_train_paths())
-    test_dataset = MixedDataset(config.get_test_paths())
+    val_dataset = MixedDataset(config.get_val_paths())
 
     train_siamfc_dataset = SiamFCDataset(train_dataset, apply_augmentation=True)
-    test_siamfc_dataset = SiamFCDataset(test_dataset, apply_augmentation=False)
+    val_siamfc_dataset = SiamFCDataset(val_dataset, apply_augmentation=False)
 
     batch_size = config.get_training_param('batch_size')
 
     num_workers = os.cpu_count() - 1
     train_loader = DataLoader(train_siamfc_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    test_loader = DataLoader(test_siamfc_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    val_loader = DataLoader(val_siamfc_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
-    train(config, train_loader, test_loader)
+    train(config, train_loader, val_loader)

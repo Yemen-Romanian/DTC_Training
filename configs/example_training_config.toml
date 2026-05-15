@@ -3,10 +3,16 @@
     uav123 = ""
     manual = ""
 
-[test_path]
+[val_path]
     synthetic = ""
     uav123 = ""
     manual = ""
+
+# Optional: evaluated once at the end of training. Remove section to skip final evaluation.
+# [test_path]
+#     synthetic = ""
+#     uav123 = ""
+#     manual = ""
 
 [training_params]
     batch_size = 16

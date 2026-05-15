@@ -11,8 +11,11 @@ class Config:
     def get_train_paths(self):
         return self._config_data["train_path"]
     
-    def get_test_paths(self):
-        return self._config_data["test_path"]
+    def get_val_paths(self):
+        return self._config_data["val_path"]
+
+    def get_test_paths(self) -> dict | None:
+        return self._config_data.get("test_path", None)
     
     def get_training_param(self, param: str):
         return self._config_data["training_params"][param]
