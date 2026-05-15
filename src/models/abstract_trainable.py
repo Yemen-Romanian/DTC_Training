@@ -7,8 +7,8 @@ from torch.utils.data import Dataset
 from utils.config import Config
 
 
-class AbstractModel(ABC):
-    """This is the abstract class for all the trainable models"""
+class AbstractTrainable(ABC):
+    """Abstract base class for all trainable models."""
 
     @abstractmethod
     def train_step(self, batch, device) -> torch.Tensor:
