@@ -55,7 +55,7 @@ class Trainer:
             self.logger.add_scalar('val_loss', val_loss, epoch)
             self.lr_scheduler.step(val_loss)
 
-            if epoch % self.evaluation_interval == 0:
+            if epoch > 0 and epoch % self.evaluation_interval == 0:
                 self.logger.info("Running evaluation on validation set...")
                 avg_results = self._run_evaluation(epoch, self.config.get_val_paths(), 'val')
                 if avg_results['iou'] > best_val_iou:
