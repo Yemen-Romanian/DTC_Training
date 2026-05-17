@@ -2,9 +2,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from torch.utils.data import Dataset
 
+from models.abstract_trainable import AbstractTrainable
+from models.losses import BalancedLoss
 from models.trackers.tracker import SingleObjectTrackerBase, SingleObjectTrackResult, BoundingBox
 from datasets.utils.tracking_augmentation_utils import get_subwindow
+from datasets.siamfc_dataset import SiamFCDataset
+from datasets.mixed_dataset import MixedDataset
+from utils.config import Config
+from models.model_factory import create_net
 
 SEARCH_FEATURE_SIZE = (22, 22)
 EXAMPLAR_FEATURE_SIZE = (6, 6)
@@ -136,3 +143,28 @@ class TrackerSiamFC(SingleObjectTrackerBase):
         self.device = device
         self.model.to(device)
 
+
+class TrainableSiamFC(AbstractTrainable):
+    def __init__(self, model_config: dict):
+        self.net = create_net(model_config=model_config)
+        self.loss_fn = BalancedLoss()
+
+    def train_step(self, batch, device) -> torch.Tensor:
+        z, x, gt = [t.to(device) for t in batch]
+        pred = self.net(z, x)
+        return self.loss_fn(pred, gt)
+
+    def val_step(self, batch, device) -> torch.Tensor:
+        z, x, gt = [t.to(device) for t in batch]
+        pred = self.net(z, x)
+        return self.loss_fn(pred, gt)
+
+    def build_datasets(self, config: Config) -> tuple[Dataset, Dataset, Dataset | None]:
+        train_ds = SiamFCDataset(MixedDataset(config.get_train_paths()), apply_augmentation=True)
+        val_ds = SiamFCDataset(MixedDataset(config.get_val_paths()), apply_augmentation=False)
+        test_paths = config.get_test_paths()
+        test_ds = SiamFCDataset(MixedDataset(test_paths), apply_augmentation=False) if test_paths else None
+        return train_ds, val_ds, test_ds
+
+    def get_module(self) -> nn.Module:
+        return self.net

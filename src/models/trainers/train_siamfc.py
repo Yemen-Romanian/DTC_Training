@@ -11,7 +11,7 @@ from models.losses import BalancedLoss
 from utils.config import Config
 from datasets.mixed_dataset import MixedDataset
 from evaluation.tracker_evaluation import evaluate_tracker, calculate_average_metrics
-from models.model_factory import create_model
+from models.model_factory import create_net
 from utils.experiment_logger import ExperimentLogger
 
 
@@ -22,7 +22,7 @@ def train(config, train_loader, val_loader):
 
     logger = ExperimentLogger(f"siamfc_training_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}")
 
-    model = create_model(model_config)
+    model = create_net(model_config)
     loss = BalancedLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=5e-4)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, mode="min", factor=0.5, patience=5, verbose=True)
