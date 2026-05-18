@@ -22,7 +22,7 @@ class Trainer:
 
         train_ds, val_ds, test_ds = model.build_datasets(config)
         batch_size = config.get_training_param('batch_size')
-        num_workers = max((os.cpu_count() or 2) - 1, 1)
+        num_workers = config.get_training_param('data_workers_num')
 
         self.train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
         self.val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)

@@ -19,6 +19,7 @@
     lr = 0.001
     epochs_num = 20
     evaluation_interval = 3
+    data_workers_num = 8
 
 [model]
     id = "siamfc"
