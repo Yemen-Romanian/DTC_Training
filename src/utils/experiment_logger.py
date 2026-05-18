@@ -1,6 +1,5 @@
 import torch
 from torch.utils.tensorboard import SummaryWriter
-import matplotlib.pyplot as plt
 import logging
 import json
 
@@ -34,6 +33,7 @@ class ExperimentLogger:
         self.tensorboard_writer.add_scalar(tag, value, iteration)
 
     def plot_scalars(self):
+        import matplotlib.pyplot as plt
         image_filename = self.logging_dir / "scalars.png"
         columns_num = 2
         scalars_keys = list(self.scalars.keys())

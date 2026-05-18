@@ -3,7 +3,6 @@ import torch.utils
 import random
 import numpy as np
 import bisect
-import matplotlib.pyplot as plt
 
 from datasets.mixed_dataset import MixedDataset
 from datasets.utils.tracking_augmentation_utils import SiameseAugmentor, get_subwindow, create_label, sample_translation_jitter, sample_scale_jitter
@@ -86,6 +85,7 @@ class SiamFCDataset(torch.utils.data.Dataset):
         return examplar_image, search_image, label
     
 def demo(paths, num_samples=3):
+    import matplotlib.pyplot as plt
     inner_dataset = MixedDataset(paths)
     dataset = SiamFCDataset(inner_dataset, apply_augmentation=True)
 
