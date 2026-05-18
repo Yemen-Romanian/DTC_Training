@@ -68,11 +68,10 @@ def _evaluate_single_video(model_config, state_dict, dataset_label, video, devic
     return dataset_label, video.label, video_metrics
 
 
-def evaluate_tracker(state_dict, config: Config, device='cpu', max_workers=None):
-    test_paths_dict = config.get_test_paths()
+def evaluate_tracker(state_dict, config: Config, paths_dict: dict, device='cpu', max_workers=None):
     model_config = config.get_model_config()
     evaluation_results = {}
-    all_videos = {label: create_dataset(label, path).parse() for label, path in test_paths_dict.items()}
+    all_videos = {label: create_dataset(label, path).parse() for label, path in paths_dict.items()}
     overall_number_of_videos = sum(len(videos) for videos in all_videos.values())
     
     # Prepare shared memory for state_dict

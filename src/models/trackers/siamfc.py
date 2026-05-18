@@ -2,12 +2,22 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from torch.utils.data import Dataset
+import logging
 
+from models.abstract_trainable import AbstractTrainable
+from models.losses import BalancedLoss
 from models.trackers.tracker import SingleObjectTrackerBase, SingleObjectTrackResult, BoundingBox
 from datasets.utils.tracking_augmentation_utils import get_subwindow
+from datasets.siamfc_dataset import SiamFCDataset
+from models.trackers.feature_extractors import AlexNetFeatureExtractor, MobileNetV3FeatureExtractor
+from datasets.mixed_dataset import MixedDataset
+from utils.config import Config
 
 SEARCH_FEATURE_SIZE = (22, 22)
 EXAMPLAR_FEATURE_SIZE = (6, 6)
+logger = logging.getLogger(__name__)
+
 
 class SiamFCNet(nn.Module):
     def __init__(self, backbone):
@@ -43,6 +53,24 @@ class SiamFCNet(nn.Module):
         score = score.view(b, 1, score.size(2), score.size(3))
         score = score * self.scale_step + self.bias
         return score.squeeze(1)
+    
+    @classmethod
+    def from_config(cls, model_config: dict):
+        backbone_config = model_config.get('backbone', {})
+        backbone_type = backbone_config.get('type', 'AlexNet')
+        freeze_backbone = backbone_config.get('freeze', False)
+        logger.info(f"Creating SiamFC model with backbone: {backbone_type}")
+        logger.info(f"Backbone weights freeze: {freeze_backbone}")
+
+        # Instantiate Backbone
+        if backbone_type == 'AlexNet':
+            backbone = AlexNetFeatureExtractor()
+        elif backbone_type == 'MobileNetV3':
+            backbone = MobileNetV3FeatureExtractor(freeze_weights=freeze_backbone)
+        else:
+            raise ValueError(f"Unsupported backbone type: {backbone_type}")
+        
+        return cls(backbone)
 
 
 class TrackerSiamFC(SingleObjectTrackerBase):
@@ -136,3 +164,28 @@ class TrackerSiamFC(SingleObjectTrackerBase):
         self.device = device
         self.model.to(device)
 
+
+class TrainableSiamFC(AbstractTrainable):
+    def __init__(self, model_config: dict):
+        self.net = SiamFCNet.from_config(model_config)
+        self.loss_fn = BalancedLoss()
+
+    def train_step(self, batch, device) -> torch.Tensor:
+        z, x, gt = [t.to(device) for t in batch]
+        pred = self.net(z, x)
+        return self.loss_fn(pred, gt)
+
+    def val_step(self, batch, device) -> torch.Tensor:
+        z, x, gt = [t.to(device) for t in batch]
+        pred = self.net(z, x)
+        return self.loss_fn(pred, gt)
+
+    def build_datasets(self, config: Config) -> tuple[Dataset, Dataset, Dataset | None]:
+        train_ds = SiamFCDataset(MixedDataset(config.get_train_paths()), apply_augmentation=True)
+        val_ds = SiamFCDataset(MixedDataset(config.get_val_paths()), apply_augmentation=False)
+        test_paths = config.get_test_paths()
+        test_ds = SiamFCDataset(MixedDataset(test_paths), apply_augmentation=False) if test_paths else None
+        return train_ds, val_ds, test_ds
+
+    def get_module(self) -> nn.Module:
+        return self.net

@@ -1,9 +1,8 @@
 import torch
 
-from models.trackers.siamfc import TrackerSiamFC
+from models.trackers.siamfc import TrackerSiamFC, SiamFCNet
 from models.trackers.nano import TrackerNano
 from models.trackers.vit import TrackerViT
-from models.model_factory import create_model
 
 
 def create_tracker(model_config: dict, state_dict: str|dict = None, device: str = None):
@@ -11,8 +10,7 @@ def create_tracker(model_config: dict, state_dict: str|dict = None, device: str 
     device = device or model_config.get('params', {}).get('device', 'cpu')
 
     if model_id == 'siamfc':
-        model = create_model(model_config)
-        
+        model = SiamFCNet.from_config(model_config)
         if isinstance(state_dict, str):
             weights = torch.load(state_dict, map_location=device)
             model.load_state_dict(weights)

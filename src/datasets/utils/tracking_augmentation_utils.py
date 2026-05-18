@@ -45,11 +45,14 @@ def get_subwindow(image, pos, model_sz, original_sz, avg_chans):
         
     return im_patch
 
-def create_label(size, radius, stride, offset=(0, 0), label_type='gaussian', sigma=1.0):
+def create_label(size, radius, stride, offset=(0, 0), label_type='gaussian'):
     """
     Creates a ground truth response map (label) for tracker training.
     """
-
+    assert radius > 0, "Radius must be positive"
+    assert stride > 0, "Stride must be positive"
+    assert size > 0, "Size must be positive"
+    
     tc = (size - 1) / 2
     y_idx, x_idx = np.ogrid[:size, :size]
 
@@ -60,6 +63,7 @@ def create_label(size, radius, stride, offset=(0, 0), label_type='gaussian', sig
         dist = np.sqrt(dx**2 + dy**2) * stride
         labels = (dist <= radius).astype(np.float32)
     elif label_type == 'gaussian':
+        sigma = radius / stride
         dist_sq = dx**2 + dy**2
         labels = np.exp(-dist_sq / (2 * (sigma**2))).astype(np.float32)
         labels[labels < 1e-3] = 0 # Zero out negligible values
