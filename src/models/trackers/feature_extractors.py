@@ -36,24 +36,31 @@ class AlexNetFeatureExtractor(nn.Module):
     
 
 class MobileNetV3FeatureExtractor(nn.Module):
-    def __init__(self, device='cpu', freeze_weights=True):
+    def __init__(self, device='cpu', freeze_weights=True, pretrained=True):
         super(MobileNetV3FeatureExtractor, self).__init__()
         self.device = device
         self.stride = 16 # Networks stride
-        self.model = mobilenet_v3_small(weights=MobileNet_V3_Small_Weights.IMAGENET1K_V1).to(self.device)
+        self.freeze_weights = freeze_weights
+        self.model = mobilenet_v3_small(weights=MobileNet_V3_Small_Weights.IMAGENET1K_V1 if pretrained else None).to(self.device)
         if freeze_weights:
             for param in self.model.parameters():
                 param.requires_grad = False
-            self.model.eval()
 
         self.preprocess = transforms.Compose([
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ]) 
-        feature_layer_idx = 10
+        ])
+        feature_layer_idx = 9
         self.feature_extractor = self.model.features[:feature_layer_idx]
-        
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if self.freeze_weights:
+            for m in self.feature_extractor.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.eval()
+        return self
+
     def forward(self, x):
         x_preprocessed = self.preprocess(x)
         features = self.feature_extractor(x_preprocessed)
         return features
-
