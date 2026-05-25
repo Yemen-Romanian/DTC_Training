@@ -113,8 +113,6 @@ class SiamBANNet(nn.Module):
 
     def extract_features(self, image: torch.Tensor, output_size=None) -> torch.Tensor:
         feat = self.backbone(image)
-        if output_size is not None:
-            feat = F.interpolate(feat, size=output_size, mode='bilinear', align_corners=False)
         return feat
 
     @classmethod

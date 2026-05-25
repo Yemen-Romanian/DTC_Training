@@ -39,7 +39,7 @@ class MobileNetV3FeatureExtractor(nn.Module):
     def __init__(self, device='cpu', freeze_weights=True, pretrained=True):
         super(MobileNetV3FeatureExtractor, self).__init__()
         self.device = device
-        self.stride = 16 # Networks stride
+        self.stride = 8 # Networks stride
         self.freeze_weights = freeze_weights
         self.model = mobilenet_v3_small(weights=MobileNet_V3_Small_Weights.IMAGENET1K_V1 if pretrained else None).to(self.device)
         if freeze_weights:
@@ -51,6 +51,12 @@ class MobileNetV3FeatureExtractor(nn.Module):
         ])
         feature_layer_idx = 9
         self.feature_extractor = self.model.features[:feature_layer_idx]
+        self.neck = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Conv2d(48, 48, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(48),
+            nn.ReLU(inplace=True)
+        ).to(self.device)
 
     def train(self, mode: bool = True):
         super().train(mode)
@@ -63,4 +69,5 @@ class MobileNetV3FeatureExtractor(nn.Module):
     def forward(self, x):
         x_preprocessed = self.preprocess(x)
         features = self.feature_extractor(x_preprocessed)
+        features = self.neck(features)
         return features
