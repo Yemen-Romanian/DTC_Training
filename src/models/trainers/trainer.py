@@ -30,7 +30,7 @@ class Trainer:
 
         self.nn_module = model.get_module()
         lr = config.get_training_param('lr')
-        self.optimizer = optim.Adam(self.nn_module.parameters(), lr=lr, weight_decay=5e-4)
+        self.optimizer = optim.Adam(self.nn_module.parameters(), lr=lr, weight_decay=1e-4)
         self.lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=5)
 
         model_id = config.get_model_config()['id']
@@ -46,6 +46,7 @@ class Trainer:
 
     def train(self):
         best_val_iou = 0.0
+        best_val_loss = float('inf')
 
         for epoch in range(self.epoch_num):
             train_loss = self._train_epoch(epoch)
@@ -55,13 +56,16 @@ class Trainer:
             self.logger.add_scalar('val_loss', val_loss, epoch)
             self.lr_scheduler.step(val_loss)
 
-            if epoch > 0 and epoch % self.evaluation_interval == 0:
+            if epoch > 0 and val_loss < best_val_loss:
+                best_val_loss = val_loss
                 self.logger.info("Running evaluation on validation set...")
                 avg_results = self._run_evaluation(epoch, self.config.get_val_paths(), 'val')
                 if avg_results['iou'] > best_val_iou:
                     best_val_iou = avg_results['iou']
                     self.logger.log_model(self.nn_module)
                     self.logger.info(f"New best model saved with val IoU: {best_val_iou:.8f}")
+
+            self.logger.info(f"Current learning rate: {self.lr_scheduler.get_last_lr()[0]:.6f}")
 
         if self._test_ds_available:
             self.logger.info("Running final evaluation on test set...")
