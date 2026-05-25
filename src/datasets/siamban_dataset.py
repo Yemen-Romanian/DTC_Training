@@ -5,7 +5,10 @@ import numpy as np
 import bisect
 
 from datasets.mixed_dataset import MixedDataset
-from datasets.utils.tracking_augmentation_utils import get_subwindow
+from datasets.utils.tracking_augmentation_utils import (
+    get_subwindow,
+    SiamBANAugmentor
+)
 
 
 class SiamBANDataset(torch.utils.data.Dataset):
@@ -25,7 +28,9 @@ class SiamBANDataset(torch.utils.data.Dataset):
         neg_factor: float = 1.0,
         pos_num: int = 16,
         neg_num: int = 48,
+        augmentation=False
     ):
+        self.augmentation = augmentation
         self.dataset = dataset
         self.pos_factor = pos_factor
         self.neg_factor = neg_factor
@@ -39,6 +44,9 @@ class SiamBANDataset(torch.utils.data.Dataset):
 
         self.video_slots = [max(0, len(v.gt_rects) - self.min_gap) for v in self.videos]
         self.cumulative_slots = np.cumsum(self.video_slots).tolist()
+
+        if self.augmentation:
+            self.augmentor = SiamBANAugmentor()
 
     def __len__(self) -> int:
         return self.cumulative_slots[-1] if self.cumulative_slots else 0
@@ -73,18 +81,32 @@ class SiamBANDataset(torch.utils.data.Dataset):
         s_z = np.sqrt((wz + context) * (hz + context))
         s_x = s_z * (self.SEARCH_SIZE / self.EXEMPLAR_SIZE)
 
+        if self.augmentation:
+            scale_jitter, shift_y, shift_x = self.augmentor.sample_crop_jitter()
+        else:
+            scale_jitter, shift_y, shift_x = 1.0, 0.0, 0.0
+
+        s_x_aug = s_x * scale_jitter
+        image_shift = np.array([shift_y, shift_x]) * (s_x_aug / self.SEARCH_SIZE)
+
         pos_z = [gt_z[1] + gt_z[3] / 2, gt_z[0] + gt_z[2] / 2]  # [cy, cx]
         pos_x = [gt_x[1] + gt_x[3] / 2, gt_x[0] + gt_x[2] / 2]
+        pos_x_aug = pos_x + image_shift  # shifted crop center in image space
 
         z_crop = get_subwindow(img_z, pos_z, self.EXEMPLAR_SIZE, round(s_z), avg_chans)
-        x_crop = get_subwindow(img_x, pos_x, self.SEARCH_SIZE, round(s_x), avg_chans)
+        x_crop = get_subwindow(img_x, pos_x_aug, self.SEARCH_SIZE, round(s_x_aug), avg_chans)
 
         # Target dimensions in the 255×255 search crop
-        scale = self.SEARCH_SIZE / s_x
+        scale = self.SEARCH_SIZE / s_x_aug
         w_crop = gt_x[2] * scale
         h_crop = gt_x[3] * scale
+        gt_offset_y = -shift_y
+        gt_offset_x = -shift_x
 
-        cls_target, reg_target = self._create_targets(w_crop, h_crop)
+        cls_target, reg_target = self._create_targets(w_crop, h_crop, gt_offset_y, gt_offset_x)
+
+        if self.augmentation:
+            z_crop, x_crop, cls_target, reg_target = self.augmentor(z_crop, x_crop, cls_target, reg_target)
 
         z_tensor = torch.from_numpy(z_crop.copy()).permute(2, 0, 1).float() / 255.0
         x_tensor = torch.from_numpy(x_crop.copy()).permute(2, 0, 1).float() / 255.0
@@ -93,14 +115,23 @@ class SiamBANDataset(torch.utils.data.Dataset):
 
         return z_tensor, x_tensor, cls_tensor, reg_tensor
 
-    def _create_targets(self, w_crop: float, h_crop: float):
+    def _create_targets(self, w_crop: float, h_crop: float,
+                        gt_offset_y: float = 0.0, gt_offset_x: float = 0.0):
+        """
+        Build classification and regression targets for one training sample.
+        """
+
         H = W = self.RESPONSE_SIZE
         cy, cx = H // 2, W // 2
 
-        # [H, W] grids of image-space displacement from target center
+        # Displacement of each response-map cell from the crop center [H, W],
+        # measured in crop pixels.
         j_grid, i_grid = np.meshgrid(np.arange(W), np.arange(H))
         dy = (i_grid - cy) * self.STRIDE  # [H, W]
         dx = (j_grid - cx) * self.STRIDE  # [H, W]
+
+        rel_dy = dy - gt_offset_y  # [H, W]
+        rel_dx = dx - gt_offset_x  # [H, W]
 
         hw = w_crop / 2
         hh = h_crop / 2
@@ -110,19 +141,17 @@ class SiamBANDataset(torch.utils.data.Dataset):
         a_neg = max(1.0, self.neg_factor * hw)
         b_neg = max(1.0, self.neg_factor * hh)
 
-        dist_pos = (dx / a_pos) ** 2 + (dy / b_pos) ** 2  # [H, W]
-        dist_neg = (dx / a_neg) ** 2 + (dy / b_neg) ** 2  # [H, W]
+        # Elliptical positive / negative regions centred on the GT location.
+        dist_pos = (rel_dx / a_pos) ** 2 + (rel_dy / b_pos) ** 2  # [H, W]
+        dist_neg = (rel_dx / a_neg) ** 2 + (rel_dy / b_neg) ** 2  # [H, W]
 
         cls = np.zeros((H, W), dtype=np.int64)   
-        cls[dist_neg <= 1] = -1
-        cls[dist_pos <= 1] = 1
-
-        # Distance from each feature location to each edge of the target box.
-        # At the center (dy=0, dx=0): dl=dr=hw, dt=db=hh (symmetric).
-        dl = (hw + dx).astype(np.float32)
-        dt = (hh + dy).astype(np.float32)
-        dr = (hw - dx).astype(np.float32)
-        db = (hh - dy).astype(np.float32)
+        cls[dist_neg <= 1] = -1   # ignore ring
+        cls[dist_pos <= 1] =  1   # positive
+        dl = (hw + rel_dx).astype(np.float32)
+        dt = (hh + rel_dy).astype(np.float32)
+        dr = (hw - rel_dx).astype(np.float32)
+        db = (hh - rel_dy).astype(np.float32)
 
         reg = np.stack([dl, dt, dr, db], axis=0)  # [4, H, W]
 

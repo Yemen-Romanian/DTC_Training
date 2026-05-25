@@ -156,10 +156,10 @@ class TrainableSiamBAN(AbstractTrainable):
         return self.loss_fn(cls_pred, reg_pred, cls_target, reg_target)
 
     def build_datasets(self, config: Config) -> tuple[Dataset, Dataset, Dataset | None]:
-        train_ds = SiamBANDataset(MixedDataset(config.get_train_paths()))
-        val_ds = SiamBANDataset(MixedDataset(config.get_val_paths()))
+        train_ds = SiamBANDataset(MixedDataset(config.get_train_paths()), augmentation=True)
+        val_ds = SiamBANDataset(MixedDataset(config.get_val_paths()), augmentation=False)
         test_paths = config.get_test_paths()
-        test_ds = SiamBANDataset(MixedDataset(test_paths)) if test_paths else None
+        test_ds = SiamBANDataset(MixedDataset(test_paths), augmentation=False) if test_paths else None
         return train_ds, val_ds, test_ds
 
     def get_module(self) -> nn.Module:
