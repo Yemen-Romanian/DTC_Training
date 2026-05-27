@@ -45,7 +45,6 @@ class Trainer:
         self.evaluation_interval = config.get_training_param('evaluation_interval')
 
     def train(self):
-        best_val_iou = 0.0
         best_val_loss = float('inf')
 
         for epoch in range(self.epoch_num):
@@ -56,14 +55,14 @@ class Trainer:
             self.logger.add_scalar('val_loss', val_loss, epoch)
             self.lr_scheduler.step(val_loss)
 
-            if epoch > 0 and val_loss < best_val_loss:
-                best_val_loss = val_loss
+            if epoch > 0 and (val_loss < best_val_loss or abs(val_loss - best_val_loss) < 0.05):
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
                 self.logger.info("Running evaluation on validation set...")
                 avg_results = self._run_evaluation(epoch, self.config.get_val_paths(), 'val')
-                if avg_results['iou'] > best_val_iou:
-                    best_val_iou = avg_results['iou']
-                    self.logger.log_model(self.nn_module)
-                    self.logger.info(f"New best model saved with val IoU: {best_val_iou:.8f}")
+                checkpoint_name = "_".join([f"{metric_name}_{avg_results[metric_name]:.4f}" for metric_name in avg_results])
+                self.logger.log_model(self.nn_module, name=checkpoint_name)
+                self.logger.info(f"New model saved with val loss: {val_loss:.8f}. Current best val loss: {best_val_loss:.8f}.")
 
             self.logger.info(f"Current learning rate: {self.lr_scheduler.get_last_lr()[0]:.6f}")
 
