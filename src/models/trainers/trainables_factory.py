@@ -1,5 +1,6 @@
 from models.abstract_trainable import AbstractTrainable
 from models.trackers.siamfc import TrainableSiamFC
+from models.trackers.siamban import TrainableSiamBAN
 
 
 def create_trainable(model_config: dict) -> AbstractTrainable:
@@ -7,5 +8,7 @@ def create_trainable(model_config: dict) -> AbstractTrainable:
     model_id = model_config['id']
     if model_id == 'siamfc':
         return TrainableSiamFC(model_config)
+    elif model_id == 'siamban':
+        return TrainableSiamBAN(model_config)
     else:
         raise ValueError(f"Unsupported model id: {model_id}")

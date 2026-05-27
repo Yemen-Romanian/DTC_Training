@@ -89,6 +89,58 @@ def sample_scale_jitter(low=0.95, high=1.05):
 
     return np.random.uniform(low, high)
 
+def color_jitter(image, brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1):
+    """
+    Simulate torchvision ColorJitter on a BGR uint8 numpy array.
+    """
+    img = image.astype(np.float32)
+
+    ops = np.random.permutation(4)   # random order, same as PyTorch
+
+    for op in ops:
+        if op == 0:   # brightness
+            f = np.random.uniform(max(0.0, 1 - brightness), 1 + brightness)
+            img = img * f
+        elif op == 1:   # contrast
+            f = np.random.uniform(max(0.0, 1 - contrast), 1 + contrast)
+            grey_mean = cv2.cvtColor(np.clip(img, 0, 255).astype(np.uint8), cv2.COLOR_BGR2GRAY).mean()
+            img = img * f + grey_mean * (1 - f)
+
+        elif op == 2:   # saturation
+            f = np.random.uniform(max(0.0, 1 - saturation), 1 + saturation)
+            hsv = cv2.cvtColor(np.clip(img, 0, 255).astype(np.uint8), cv2.COLOR_BGR2HSV).astype(np.float32)
+            hsv[:, :, 1] = np.clip(hsv[:, :, 1] * f, 0, 255)
+            img = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
+
+        elif op == 3:   # hue — OpenCV H is 0..180, not 0..360
+            delta = np.random.uniform(-hue * 180, hue * 180)
+            hsv = cv2.cvtColor(np.clip(img, 0, 255).astype(np.uint8), cv2.COLOR_BGR2HSV).astype(np.float32)
+            hsv[:, :, 0] = (hsv[:, :, 0] + delta) % 180
+            img = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
+
+        img = np.clip(img, 0, 255)
+
+    return img.astype(np.uint8)
+
+def random_blur(image):
+    """Blur with a random cross-shaped (motion-blur-like) kernel."""
+    # Odd sizes 5, 7, 9, … 45
+    size = np.random.choice(np.arange(5, 36, 2))
+    kernel = np.zeros((size, size), dtype=np.float32)
+    c = size // 2
+
+    # wx splits weight between the vertical bar and the horizontal bar
+    wx = np.random.random()
+    kernel[:, c] += (1.0 / size) * wx          # vertical bar
+    kernel[c, :] += (1.0 / size) * (1.0 - wx)  # horizontal bar
+
+    return cv2.filter2D(image, -1, kernel)
+
+def convert_to_3channel_grayscale(image: np.ndarray) -> np.ndarray:
+    """Convert a BGR image to 3-channel grayscale."""
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
 class SiameseAugmentor:
     """
     Handles synchronized data augmentation for Siamese tracking networks.
@@ -126,3 +178,70 @@ class SiameseAugmentor:
             x_tensor = self.color_jitter(x_tensor)
 
         return z_tensor, x_tensor, label_tensor
+    
+class SiamBANAugmentor:
+    """
+    Image-level and geometric augmentation for SiamBAN training.
+    """
+
+    def __init__(
+        self,
+        scale_jitter_range: float = 0.18,
+        max_shift: float = 48.0,
+        grayscale_prob: float = 0.25,
+        color_jitter_prob: float = 0.6,
+        blur_prob: float = 0.2,
+        flip_prob: float = 0.5,
+        color_params: dict | None = None,
+    ):
+        self.scale_jitter_range = scale_jitter_range
+        self.max_shift = max_shift
+        self.grayscale_prob = grayscale_prob
+        self.color_jitter_prob = color_jitter_prob
+        self.blur_prob = blur_prob
+        self.flip_prob = flip_prob
+
+        cp = color_params or {}
+        self.brightness = cp.get('brightness', 0.2)
+        self.contrast = cp.get('contrast',   0.2)
+        self.saturation = cp.get('saturation', 0.2)
+        self.hue = cp.get('hue', 0.1)
+
+    def sample_crop_jitter(self):
+        scale_factor = 1.0 + (np.random.random() * 2 - 1.0) * self.scale_jitter_range
+        shift_y = (np.random.random() * 2 - 1.0) * self.max_shift
+        shift_x = (np.random.random() * 2 - 1.0) * self.max_shift
+        return scale_factor, shift_y, shift_x
+
+    def __call__(
+        self,
+        z_crop: np.ndarray,
+        x_crop: np.ndarray,
+        cls_label: np.ndarray,
+        regression_label: np.ndarray,
+    ):
+
+        if np.random.random() < self.flip_prob:
+            z_crop = np.flip(z_crop, axis=1).copy()
+            x_crop = np.flip(x_crop, axis=1).copy()
+            cls_label = np.flip(cls_label, axis=1).copy()
+            regression_label = np.flip(regression_label, axis=2).copy()
+            regression_label[0], regression_label[2] = (
+                regression_label[2].copy(), regression_label[0].copy()
+            )
+
+        if np.random.random() < self.grayscale_prob:
+            z_crop = convert_to_3channel_grayscale(z_crop)
+            x_crop = convert_to_3channel_grayscale(x_crop)
+
+        if np.random.random() < self.color_jitter_prob:
+            z_crop = color_jitter(z_crop, self.brightness, self.contrast,
+                                  self.saturation, self.hue)
+        if np.random.random() < self.color_jitter_prob:
+            x_crop = color_jitter(x_crop, self.brightness, self.contrast,
+                                  self.saturation, self.hue)
+
+        if np.random.random() < self.blur_prob:
+            x_crop = random_blur(x_crop)
+
+        return z_crop, x_crop, cls_label, regression_label

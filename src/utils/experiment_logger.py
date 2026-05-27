@@ -56,8 +56,8 @@ class ExperimentLogger:
         plt.savefig(image_filename)
         plt.close()
 
-    def log_model(self, model):
-        torch.save(model.state_dict(), self.logging_dir / "best_model.pth")
+    def log_model(self, model, name="best_model"):
+        torch.save(model.state_dict(), self.logging_dir / f"{name}.pth")
 
     def log_dict(self, metrics_dict, filename):
         with open(self.logging_dir / filename, "w") as f:
