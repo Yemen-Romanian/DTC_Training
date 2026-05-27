@@ -210,6 +210,8 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
 
         # Foreground score map: softmax over the 2-class dimension, take foreground score
         score = torch.softmax(cls[0], dim=0)[1].cpu().numpy()  # [17, 17]
+        confidence = self._calculate_confidence(score)
+
         score = (1 - self.window_influence) * score + self.window_influence * self.window
 
         r_max, c_max = np.unravel_index(score.argmax(), score.shape)
@@ -250,7 +252,7 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
             width=int(self.target_sz[1]),
             height=int(self.target_sz[0]),
         )
-        return SingleObjectTrackResult(bbox=bbox, confidence=float(score[r_max, c_max]))
+        return SingleObjectTrackResult(bbox=bbox, confidence=confidence)
 
     def to_device(self, device: str):
         self.device = device
@@ -261,3 +263,6 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
         context = 0.5 * self.target_sz.sum()
         self.s_z = np.sqrt((self.target_sz[0] + context) * (self.target_sz[1] + context))
         self.s_x = self.s_z * (self.SEARCH_SIZE / self.EXEMPLAR_SIZE)
+
+    def _calculate_confidence(self, score_map: np.ndarray) -> float:
+        return score_map.max()

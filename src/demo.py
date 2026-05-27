@@ -72,6 +72,7 @@ def main():
         gt_frame = draw_bounding_box(gt_frame, gt_rect, color=TRUE_COLOR)
         if file_mode:
             bbox_pred = tracker_results.iloc[[frame_idx + 1]]
+            confidence = 1.0 # Add confidence to CSV file
         else:
             track_result = tracker.track(frame)
             bbox_pred = pd.DataFrame([{
@@ -80,6 +81,8 @@ def main():
                 'x2': track_result.bbox.x + track_result.bbox.width,
                 'y2': track_result.bbox.y + track_result.bbox.height
             }])
+            confidence = track_result.confidence
+        
         bbox_gt = convert_gt_for_evaluation(frame_idx + 1, gt_rect)
         tp, fp, fn, metrics_list = match_boxes(bbox_gt, bbox_pred)
 
@@ -90,6 +93,7 @@ def main():
         
         results_frame = draw_frame_number(results_frame, frame_idx + 1)
         results_frame = draw_metrics_info(results_frame, tp=tp, fp=fp, fn=fn, metrics_list=metrics_list)
+        results_frame = draw_confidence_info(results_frame, confidence)
 
         if tp > 0 and gt_rect.any():
             prediction_color = TRUE_COLOR
@@ -140,6 +144,23 @@ def draw_metrics_info(frame, tp, fp, fn, metrics_list, relative_position=(0.15, 
     frame = cv2.putText(frame, metrics_str, position, cv2.FONT_HERSHEY_SIMPLEX, text_scale, TEXT_COLOR, 2)
     return frame
 
+def draw_confidence_info(frame, confidence, relative_position=(0.01, 0.08), object_loss_threshold=0.5):
+    text_scale = 1.0
+    text_scale = max(0.5, min(frame.shape[1], frame.shape[0]) / 1000 * text_scale)
+    position = (int(frame.shape[1] * relative_position[0]), int(frame.shape[0] * relative_position[1]))
+    confidence_str = f"Confidence: {confidence:.3f}"
+    frame = cv2.putText(frame, confidence_str, position, cv2.FONT_HERSHEY_SIMPLEX, text_scale, TEXT_COLOR, 2)
+
+    if confidence < object_loss_threshold:  # Threshold for low confidence, can be adjusted
+        frame = draw_object_loss_text(frame, relative_position=(0.20, relative_position[1]))
+    return frame
+
+def draw_object_loss_text(frame, relative_position=(0.30, 0.03)):
+    text_scale = 1.0
+    text_scale = max(0.5, min(frame.shape[1], frame.shape[0]) / 1000 * text_scale)
+    position = (int(frame.shape[1] * relative_position[0]), int(frame.shape[0] * relative_position[1]))
+    frame = cv2.putText(frame, "Object is lost", position, cv2.FONT_HERSHEY_SIMPLEX, text_scale, TEXT_COLOR, 2)
+    return frame
 
 def create_video_from_input_info(video_path: str, gt_path: str, data_type: str) -> Video:
     if data_type == 'synthetic':
