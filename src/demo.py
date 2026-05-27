@@ -35,16 +35,17 @@ def main():
     else:
         # Default config for demo purposes
         model_config = {
-            'id': 'siamfc',
+            'id': 'siamban',
             'backbone': {
-                'type': 'AlexNet',
-                'freeze': False
+                'type': 'MobileNetV3',
+                'freeze': True,
+                'pretrained': True
             },
             'params': {
                 'device': 'cuda' if torch.cuda.is_available() else 'cpu'
             }
         }
-        state_dict_path = str(Paths.model_weights_dir() / "siamfc.pth")
+        state_dict_path = str(Paths.model_weights_dir() / "siamban_synth_real_iou_0.6336_iog_0.7688_center_dist_33.2327_center_dist_norm_0.2996.pth")
         tracker = create_tracker(model_config, state_dict=state_dict_path)
 
     if len(video.source) == 0:
