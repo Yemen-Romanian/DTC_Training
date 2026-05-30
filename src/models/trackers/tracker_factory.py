@@ -8,9 +8,9 @@ from models.trackers.vit import TrackerViT
 
 def _load_weights(model, state_dict, device):
     if isinstance(state_dict, str):
-        model.load_state_dict(torch.load(state_dict, map_location=device))
+        model.load_state_dict(torch.load(state_dict, map_location=device), strict=False)
     elif isinstance(state_dict, dict):
-        model.load_state_dict(state_dict)
+        model.load_state_dict(state_dict, strict=False)
     elif state_dict is not None:
         raise TypeError(f"Expected str path or dict for state_dict, got {type(state_dict)}")
 

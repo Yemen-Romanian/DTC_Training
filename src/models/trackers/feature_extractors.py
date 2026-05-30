@@ -1,6 +1,6 @@
+import torch
 import torch.nn as nn
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
-from torchvision import transforms
 
 class AlexNetFeatureExtractor(nn.Module):
     """Feature extractor that was proposed in Bertinetto et.al paper"""
@@ -46,9 +46,15 @@ class MobileNetV3FeatureExtractor(nn.Module):
             for param in self.model.parameters():
                 param.requires_grad = False
 
-        self.preprocess = transforms.Compose([
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
+        self.register_buffer(
+            'normalize_mean',
+            torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+        )
+
+        self.register_buffer(
+            'normalize_std',
+            torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+        )
         feature_layer_idx = 9
         self.feature_extractor = self.model.features[:feature_layer_idx]
         self.neck = nn.Sequential(
@@ -67,7 +73,7 @@ class MobileNetV3FeatureExtractor(nn.Module):
         return self
 
     def forward(self, x):
-        x_preprocessed = self.preprocess(x)
+        x_preprocessed = (x - self.normalize_mean) / self.normalize_std
         features = self.feature_extractor(x_preprocessed)
         features = self.neck(features)
         return features

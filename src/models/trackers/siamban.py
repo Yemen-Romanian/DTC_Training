@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset
+import onnxruntime as ort
+from scipy.special import softmax
 
 import numpy as np
 
@@ -15,6 +17,7 @@ from datasets.mixed_dataset import MixedDataset
 from datasets.siamban_dataset import SiamBANDataset
 from datasets.utils.tracking_augmentation_utils import get_subwindow
 from utils.config import Config
+from utils.paths import Paths
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +51,7 @@ def _head_branch(in_ch: int, out_ch: int) -> nn.Sequential:
 
 class BANHead(nn.Module):
     """
-    Box Adaptive Network head that performs classification and 
+    Box Adaptive Network head that performs classification and
     bbox regression for a single set of feature z and x.
     This unit is taken from https://arxiv.org/abs/2003.06761
 
@@ -173,17 +176,18 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
     STRIDE = 8
 
     def __init__(self, model: SiamBANNet, device: str):
-        self.model = model
-        self.device = device
-        self.model.to(device)
-        self.model.eval()
-
         hann = np.hanning(self.RESPONSE_SIZE)
         self.window = np.outer(hann, hann)
         self.window /= self.window.sum()
 
         self.window_influence = 0.176
         self.size_lr = 0.1
+
+        backbone_path = Paths.model_weights_dir() / "siamban_backbone.onnx"
+        head_path = Paths.model_weights_dir() / "siamban_head.onnx"
+        self.backbone_session = ort.InferenceSession(backbone_path, providers=['CPUExecutionProvider'])
+        self.head_session = ort.InferenceSession(head_path, providers=['CPUExecutionProvider'])
+
 
     def initialize(self, image: np.ndarray, bbox):
         # bbox: [x, y, w, h]
@@ -194,22 +198,18 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
 
         avg_chans = image.mean(axis=(0, 1))
         z_crop = get_subwindow(image, self.pos, self.EXEMPLAR_SIZE, round(self.s_z), avg_chans)
-        z_tensor = torch.from_numpy(z_crop).permute(2, 0, 1).float().unsqueeze(0).to(self.device) / 255.0
-
-        with torch.no_grad():
-            self.exemplar_features = self.model.extract_features(z_tensor, EXEMPLAR_FEATURE_SIZE)
+        z_crop_onnx = z_crop.transpose(2, 0, 1).astype(np.float32)[np.newaxis] / 255.0
+        self.examplar_features_onnx = self.backbone_session.run(['features'], {'image': z_crop_onnx})[0]
 
     def track(self, image: np.ndarray) -> SingleObjectTrackResult:
         avg_chans = image.mean(axis=(0, 1))
         x_crop = get_subwindow(image, self.pos, self.SEARCH_SIZE, round(self.s_x), avg_chans)
-        x_tensor = torch.from_numpy(x_crop).permute(2, 0, 1).float().unsqueeze(0).to(self.device) / 255.0
-
-        with torch.no_grad():
-            x_feat = self.model.extract_features(x_tensor, SEARCH_FEATURE_SIZE)
-            cls, reg = self.model.head(self.exemplar_features, x_feat)
+        x_crop = x_crop.transpose(2, 0, 1).astype(np.float32)[np.newaxis] / 255.0
+        x_features = self.backbone_session.run(['features'], {'image': x_crop})[0]
+        cls, reg = self.head_session.run(['cls', 'reg'], {'z_feat': self.examplar_features_onnx, 'x_feat': x_features})
 
         # Foreground score map: softmax over the 2-class dimension, take foreground score
-        score = torch.softmax(cls[0], dim=0)[1].cpu().numpy()  # [17, 17]
+        score = softmax(cls[0], axis=0)[1]  # [17, 17]
         confidence = self._calculate_confidence(score)
 
         score = (1 - self.window_influence) * score + self.window_influence * self.window
@@ -217,7 +217,7 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
         r_max, c_max = np.unravel_index(score.argmax(), score.shape)
 
         # Decode (dl, dt, dr, db) at the best location
-        dl, dt, dr, db = reg[0, :, r_max, c_max].cpu().numpy()
+        dl, dt, dr, db = reg[0, :, r_max, c_max]
 
         image_center = self.SEARCH_SIZE // 2   # 127
         px = image_center + (c_max - self.RESPONSE_SIZE // 2) * self.STRIDE
