@@ -12,6 +12,7 @@ from datasets.utils.video import Video
 from datasets.synthetic_dataset import SyntheticDataset
 from datasets.manual_uav_dataset import ManualUAVDataset
 from datasets.uav123_dataset import UAV123Dataset
+from datasets.visdrone_dataset import VisDroneDataset
 from evaluation.metrics import match_boxes
 from models.trackers.tracker_factory import create_tracker
 from utils.paths import Paths
@@ -24,14 +25,14 @@ def main():
     parser = argparse.ArgumentParser(description="Tracking Demo")
     parser.add_argument('--video_path', type=str, required=True, help="Path to the input video file or image sequence")
     parser.add_argument('--gt_path', type=str, required=True, help="Path to the ground truth annotations file.")
-    parser.add_argument('--data_type', type=str, choices=['synthetic', 'manual', 'uav123'], required=True, help="Type of the dataset to use for demo")
+    parser.add_argument('--data_type', type=str, choices=['synthetic', 'manual', 'uav123', 'visdrone'], required=True, help="Type of the dataset to use for demo")
     parser.add_argument('--tracker_results', type=str, required=False, help='Path to CSV file with tracker results to visualize. If not provided, the demo will create a tracker and run it in real time.')
     parser.add_argument('--debug', action='store_true', help='Whether to manually control the video playback (Default to false).')
 
     args = parser.parse_args()
     video = create_video_from_input_info(args.video_path, args.gt_path, args.data_type)
     debug_mode = args.debug
-    
+
     file_mode = args.tracker_results is not None
     if file_mode:
         tracker_results = pd.read_csv(args.tracker_results)
@@ -54,7 +55,7 @@ def main():
     if len(video.source) == 0:
         print("Error: No frames found in the video source.")
         return
-    
+
     current_gt_index = 0
     frame_times = collections.deque(maxlen=30)
     cv2.namedWindow("Tracking Demo", cv2.WND_PROP_FULLSCREEN)
@@ -62,7 +63,7 @@ def main():
 
     for frame_idx, frame in enumerate(video.source):
         gt_frame = cv2.cvtColor(frame.copy(), cv2.COLOR_RGB2BGR)
-        results_frame = cv2.cvtColor(frame.copy(), cv2.COLOR_RGB2BGR) 
+        results_frame = cv2.cvtColor(frame.copy(), cv2.COLOR_RGB2BGR)
 
         if frame_idx == 0 and not file_mode:
             tracker.initialize(frame, video.gt_rects[0][1])
@@ -91,7 +92,7 @@ def main():
                 'y2': track_result.bbox.y + track_result.bbox.height
             }])
             confidence = track_result.confidence
-        
+
         bbox_gt = convert_gt_for_evaluation(frame_idx + 1, gt_rect)
         tp, fp, fn, metrics_list = match_boxes(bbox_gt, bbox_pred)
 
@@ -99,7 +100,7 @@ def main():
                         bbox_pred['y1'].values[0],
                         bbox_pred['x2'].values[0] - bbox_pred['x1'].values[0],
                         bbox_pred['y2'].values[0] - bbox_pred['y1'].values[0])
-        
+
         results_frame = draw_frame_number(results_frame, frame_idx + 1)
         results_frame = draw_metrics_info(results_frame, tp=tp, fp=fp, fn=fn, metrics_list=metrics_list)
         results_frame = draw_confidence_info(results_frame, confidence)
@@ -187,9 +188,11 @@ def create_video_from_input_info(video_path: str, gt_path: str, data_type: str) 
         gt_rects = ManualUAVDataset.parse_ground_truth(gt_path)
     elif data_type == 'uav123':
         gt_rects = UAV123Dataset.parse_ground_truth(gt_path)
+    elif data_type == 'visdrone':
+        gt_rects = VisDroneDataset.parse_ground_truth(gt_path)
     else:
         raise ValueError(f"Unsupported data type: {data_type}. Supported types are: synthetic, manual, uav123.")
-    
+
     video_source = VideoSource(video_path)
     return Video(str(video_path), video_source, gt_rects)
 
@@ -207,10 +210,9 @@ def convert_gt_for_evaluation(frame_id, gt_rect, class_id=0, track_id=0):
     result['w'] = w
     result['h'] = h
     result['confidence'] = 1.0  # Ground truth has confidence of 1
-    
+
     return pd.DataFrame([result])
 
 
 if __name__ == "__main__":
     main()
-
