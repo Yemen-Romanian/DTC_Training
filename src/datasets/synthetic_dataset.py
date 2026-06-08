@@ -59,7 +59,12 @@ class SyntheticDataset:
     
     @staticmethod
     def parse_ground_truth(csv_path):
-        df = pd.read_csv(csv_path, header=None, names=["image_idx", "class_id", "x", "y", "w", "h", "unknown"])
+        df = pd.read_csv(
+                csv_path, 
+                header=None, 
+                names=["image_idx", "x", "y", "w", "h"],
+                usecols=[0,2,3,4,5]
+        )
         df = df[(df["w"] > 0) & (df["h"] > 0)]
         gt_rects = df[["x", "y", "w", "h"]].values.astype(np.float32)
         image_indices = df["image_idx"].values.astype(int) - 1
