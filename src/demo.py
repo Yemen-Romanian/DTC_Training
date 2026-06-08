@@ -3,6 +3,8 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
+import collections
+import time
 
 from utils.video_source import VideoSource
 from datasets.utils.video import Video
@@ -54,6 +56,7 @@ def main():
         return
 
     current_gt_index = 0
+    frame_times = collections.deque(maxlen=30)
     cv2.namedWindow("Tracking Demo", cv2.WND_PROP_FULLSCREEN)
     cv2.setWindowProperty("Tracking Demo", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
@@ -75,8 +78,12 @@ def main():
         if file_mode:
             bbox_pred = tracker_results.iloc[[frame_idx + 1]]
             confidence = 1.0 # Add confidence to CSV file
+            fps = None
         else:
+            t0 = time.perf_counter()
             track_result = tracker.track(frame)
+            frame_times.append(time.perf_counter() - t0)
+            fps = len(frame_times) / sum(frame_times)
             bbox_pred = pd.DataFrame([{
                 'x1': track_result.bbox.x,
                 'y1': track_result.bbox.y,
@@ -96,6 +103,9 @@ def main():
         results_frame = draw_frame_number(results_frame, frame_idx + 1)
         results_frame = draw_metrics_info(results_frame, tp=tp, fp=fp, fn=fn, metrics_list=metrics_list)
         results_frame = draw_confidence_info(results_frame, confidence)
+
+        if fps is not None:
+            results_frame = draw_fps_info(results_frame, fps)
 
         if tp > 0 and gt_rect.any():
             prediction_color = TRUE_COLOR
@@ -117,6 +127,13 @@ def main():
                 continue
         elif cv2.waitKey(30) & 0xFF == ord('q'):
             break
+
+
+def draw_fps_info(frame, fps, relative_position=(0.01, 0.13)):
+    text_scale = max(0.5, min(frame.shape[1], frame.shape[0]) / 1000)
+    position = (int(frame.shape[1] * relative_position[0]), int(frame.shape[0] * relative_position[1]))
+    frame = cv2.putText(frame, f"FPS: {fps:.1f}", position, cv2.FONT_HERSHEY_SIMPLEX, text_scale, TEXT_COLOR, 2)
+    return frame
 
 
 def draw_bounding_box(frame, bbox, color, thickness=2):
