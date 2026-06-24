@@ -23,17 +23,18 @@ TEXT_COLOR = (255, 255, 255) # White text
 def main():
     parser = argparse.ArgumentParser(description="Tracking Demo")
     parser.add_argument('--video_path', type=str, required=True, help="Path to the input video file or image sequence")
-    parser.add_argument('--gt_path', type=str, required=True, help="Path to the ground truth annotations file.")
-    parser.add_argument('--data_type', type=str, choices=['synthetic', 'manual', 'uav123', 'visdrone'], required=True, help="Type of the dataset to use for demo")
+    parser.add_argument('--gt_path', type=str, required=False, help="Path to the ground truth annotations file.")
+    parser.add_argument('--data_type', type=str, required=False, choices=['synthetic', 'manual', 'uav123', 'visdrone'], help="Type of the dataset to use for demo")
     parser.add_argument('--tracker_results', type=str, required=False, help='Path to CSV file with tracker results to visualize. If not provided, the demo will create a tracker and run it in real time.')
     parser.add_argument('--debug', action='store_true', help='Whether to manually control the video playback (Default to false).')
 
     args = parser.parse_args()
-    video = create_video_from_input_info(args.video_path, args.gt_path, args.data_type)
+    video = create_video_from_input_info(args.video_path)
+    gt_rects = create_gt_rects(args.gt_path, args.data_type)
     debug_mode = args.debug
 
-    file_mode = args.tracker_results is not None
-    if file_mode:
+    if args.tracker_results:
+        tracker = None
         tracker_results = pd.read_csv(args.tracker_results)
     else:
         # Default config for demo purposes
@@ -50,11 +51,19 @@ def main():
         }
         state_dict_path = str(Paths.model_weights_dir() / "siamban_synth_real_iou_0.6336_iog_0.7688_center_dist_33.2327_center_dist_norm_0.2996.pth")
         tracker = create_tracker(model_config, state_dict=state_dict_path)
+        tracker_results = None
 
     if len(video.source) == 0:
         print("Error: No frames found in the video source.")
         return
 
+    if gt_rects:
+        run_demo_with_gt(video, tracker, tracker_results, debug_mode, gt_rects)
+    else:
+        run_demo(video, tracker, tracker_results, debug_mode)
+
+
+def run_demo_with_gt(video, tracker, tracker_results, debug_mode, gt_rects):
     current_gt_index = 0
     frame_times = collections.deque(maxlen=30)
     cv2.namedWindow("Tracking Demo", cv2.WND_PROP_FULLSCREEN)
@@ -64,18 +73,18 @@ def main():
         gt_frame = cv2.cvtColor(frame.copy(), cv2.COLOR_RGB2BGR)
         results_frame = cv2.cvtColor(frame.copy(), cv2.COLOR_RGB2BGR)
 
-        if frame_idx == 0 and not file_mode:
-            tracker.initialize(frame, video.gt_rects[0][1])
+        if frame_idx == 0 and not tracker_results:
+            tracker.initialize(frame, gt_rects[0][1])
             current_gt_index += 1
 
-        if current_gt_index < len(video.gt_rects) and video.gt_rects[current_gt_index][0] == frame_idx:
-            gt_rect = video.gt_rects[current_gt_index][1]
+        if current_gt_index < len(gt_rects) and gt_rects[current_gt_index][0] == frame_idx:
+            gt_rect = gt_rects[current_gt_index][1]
             current_gt_index += 1
         else:
             gt_rect = np.zeros((4, ))  # No ground truth for this frame
 
         gt_frame = draw_bounding_box(gt_frame, gt_rect, color=TRUE_COLOR)
-        if file_mode:
+        if tracker_results:
             bbox_pred = tracker_results.iloc[[frame_idx + 1]]
             confidence = 1.0 # Add confidence to CSV file
             fps = None
@@ -117,6 +126,64 @@ def main():
         delimiter_image = np.zeros((20, frame.shape[1], 3), dtype=np.uint8)  # A black vertical bar as delimiter
         frame_to_display = np.vstack([gt_frame, delimiter_image, results_frame])  # Just display the same frame twice for demo
         cv2.imshow("Tracking Demo", frame_to_display)
+
+        if debug_mode:
+            key = cv2.waitKey(0) & 0xFF
+            if key == ord('q'):
+                print('Exiting demo.')
+                exit(0)
+            elif key == ord(' '):
+                continue
+        elif cv2.waitKey(30) & 0xFF == ord('q'):
+            break
+
+def run_demo(video, tracker, tracker_results, debug_mode):
+    frame_times = collections.deque(maxlen=30)
+    cv2.namedWindow("Tracking Demo", cv2.WND_PROP_FULLSCREEN)
+    cv2.setWindowProperty("Tracking Demo", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+    for frame_idx, frame in enumerate(video.source):
+        results_frame = cv2.cvtColor(frame.copy(), cv2.COLOR_RGB2BGR)
+
+        if frame_idx == 0 and not tracker_results:
+            window_name = "Select Object to Track"
+            cv2.namedWindow(window_name, cv2.WND_PROP_FULLSCREEN)
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+            roi = cv2.selectROI(window_name, results_frame, fromCenter=False, showCrosshair=True)
+            tracker.initialize(frame, roi)
+            cv2.destroyWindow(window_name)
+
+        if tracker_results:
+            bbox_pred = tracker_results.iloc[[frame_idx + 1]]
+            confidence = 1.0 # Add confidence to CSV file
+            fps = None
+        else:
+            t0 = time.perf_counter()
+            track_result = tracker.track(frame)
+            frame_times.append(time.perf_counter() - t0)
+            fps = len(frame_times) / sum(frame_times)
+            bbox_pred = pd.DataFrame([{
+                'x1': track_result.bbox.x,
+                'y1': track_result.bbox.y,
+                'x2': track_result.bbox.x + track_result.bbox.width,
+                'y2': track_result.bbox.y + track_result.bbox.height
+            }])
+            confidence = track_result.confidence
+
+        bbox_to_draw = (bbox_pred['x1'].values[0],
+                        bbox_pred['y1'].values[0],
+                        bbox_pred['x2'].values[0] - bbox_pred['x1'].values[0],
+                        bbox_pred['y2'].values[0] - bbox_pred['y1'].values[0])
+
+        results_frame = draw_frame_number(results_frame, frame_idx + 1)
+        results_frame = draw_confidence_info(results_frame, confidence)
+
+        if fps is not None:
+            results_frame = draw_fps_info(results_frame, fps)
+
+        prediction_color = TRUE_COLOR
+        results_frame = draw_bounding_box(results_frame, bbox_to_draw, color=prediction_color)
+        cv2.imshow("Tracking Demo", results_frame)
 
         if debug_mode:
             key = cv2.waitKey(0) & 0xFF
@@ -181,7 +248,11 @@ def draw_object_loss_text(frame, relative_position=(0.30, 0.03)):
     frame = cv2.putText(frame, "Object is lost", position, cv2.FONT_HERSHEY_SIMPLEX, text_scale, TEXT_COLOR, 2)
     return frame
 
-def create_video_from_input_info(video_path: str, gt_path: str, data_type: str) -> Video:
+def create_video_from_input_info(video_path: str) -> Video:
+    video_source = VideoSource(video_path)
+    return Video(str(video_path), video_source)
+
+def create_gt_rects(gt_path: str, data_type: str):
     if data_type == 'synthetic':
         gt_rects = SyntheticDataset.parse_ground_truth(gt_path)
     elif data_type == 'manual':
@@ -190,12 +261,12 @@ def create_video_from_input_info(video_path: str, gt_path: str, data_type: str) 
         gt_rects = UAV123Dataset.parse_ground_truth(gt_path)
     elif data_type == 'visdrone':
         gt_rects = VisDroneDataset.parse_ground_truth(gt_path)
+    elif gt_path is None or data_type is None:
+        gt_rects = None
     else:
         raise ValueError(f"Unsupported data type: {data_type}. Supported types are: synthetic, manual, uav123.")
 
-    video_source = VideoSource(video_path)
-    return Video(str(video_path), video_source, gt_rects)
-
+    return gt_rects
 
 def convert_gt_for_evaluation(frame_id, gt_rect, class_id=0, track_id=0):
     """

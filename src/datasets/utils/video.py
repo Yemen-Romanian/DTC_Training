@@ -8,5 +8,4 @@ from utils.video_source import VideoSource
 class Video:
     label: str
     source: VideoSource
-    gt_rects: list
     metadata: list = None

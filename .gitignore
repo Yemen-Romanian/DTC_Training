@@ -9,3 +9,4 @@ __pycache__
 .vscode
 configs/*
 !configs/example_training_config.toml
+/.zed
