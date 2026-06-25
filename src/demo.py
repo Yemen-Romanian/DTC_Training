@@ -253,6 +253,9 @@ def create_video_from_input_info(video_path: str) -> Video:
     return Video(str(video_path), video_source)
 
 def create_gt_rects(gt_path: str, data_type: str):
+    if data_type is None or gt_path is None:
+        return None
+
     if data_type == 'synthetic':
         gt_rects = SyntheticDataset.parse_ground_truth(gt_path)
     elif data_type == 'manual':
@@ -261,8 +264,6 @@ def create_gt_rects(gt_path: str, data_type: str):
         gt_rects = UAV123Dataset.parse_ground_truth(gt_path)
     elif data_type == 'visdrone':
         gt_rects = VisDroneDataset.parse_ground_truth(gt_path)
-    elif gt_path is None or data_type is None:
-        gt_rects = None
     else:
         raise ValueError(f"Unsupported data type: {data_type}. Supported types are: synthetic, manual, uav123.")
 
