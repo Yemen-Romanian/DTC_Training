@@ -53,13 +53,15 @@ class ManualUAVDataset:
     @staticmethod
     def parse_ground_truth(csv_path):
         bboxes = pd.read_csv(
-            csv_path, header=None, 
+            csv_path, header=None,
             names=["frame_id", "track", "x", "y", "w", "h", "not_ignored", "class_id", "visibility"]
             )
-        
-        valid_boxes_idx = bboxes['frame_id'].values.astype(int) - 1
-        gt_rects = bboxes[["x", "y", "w", "h"]].values.astype(int)
-        gt_rects = list(zip(valid_boxes_idx, gt_rects))
+        bboxes = bboxes.set_index("frame_id")[["x", "y", "w", "h"]]
+        full_index = pd.RangeIndex(start=bboxes.index.min(), stop=bboxes.index.max() + 1)
+        bboxes = bboxes.reindex(full_index, fill_value=0)
+        gt_rects = bboxes.values.astype(int)
+        image_indices = bboxes.index.values.astype(int) - 1
+        gt_rects = list(zip(image_indices, gt_rects))
         return gt_rects
     
     def __getitem__(self, i):

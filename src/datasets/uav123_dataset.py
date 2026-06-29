@@ -26,7 +26,7 @@ class UAV123Dataset:
             ...
     The video1.txt is a csv file and should have the following format:
     x, y, w, h """
-    
+
     def __init__(self, root_path, image_extension='.jpg'):
         self.root_path = Path(root_path)
         self.image_extension = image_extension
@@ -52,20 +52,20 @@ class UAV123Dataset:
 
         logging.info(f"Video successfully extracted: {len(self._videos)}")
         return self._videos
-    
+
     @staticmethod
     def parse_ground_truth(csv_path):
         bboxes = pd.read_csv(csv_path, header=None, names=["x", "y", "w", "h"])
-        valid_boxes_idx = bboxes[~bboxes['w'].isna()].index.astype(int).values
-        gt_rects = bboxes.loc[valid_boxes_idx].values.astype(int)
-        gt_rects = list(zip(valid_boxes_idx, gt_rects))
+        bboxes = bboxes.fillna(0)
+        gt_rects = bboxes.values.astype(int)
+        gt_rects = list(zip(bboxes.index.values, gt_rects))
         return gt_rects
-    
+
     def __getitem__(self, i):
         if self._videos is None:
             self._videos = self.parse()
         return self._videos[i]
-    
+
     def __len__(self):
         if self._videos is None:
             self._videos = self.parse()

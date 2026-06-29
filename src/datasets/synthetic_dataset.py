@@ -28,7 +28,7 @@ class SyntheticDataset:
     The bboxes.csv should have the following format:
     image_idx, class_id, x, y, w, h, unknown
     """
-    
+
     def __init__(self, root_path, image_extension='.jpg', csv_name='labels.txt'):
         self.root_path = Path(root_path)
         self.image_extension = image_extension
@@ -37,10 +37,10 @@ class SyntheticDataset:
 
     def parse(self):
         video_list = []
-        
+
         for video_dir in self.root_path.iterdir():
             video_source = VideoSource(video_dir / "images")
-            
+
             if len(video_source) == 0:
                 logging.warning(f"No videos found in folder {video_dir.name}.")
                 continue
@@ -53,29 +53,31 @@ class SyntheticDataset:
             gt_rects = self.parse_ground_truth(csv_path)
 
             video_list.append(Video(video_dir.name, video_source, gt_rects))
-            
+
         logging.info(f"Video successfully extracted: {len(video_list)}")
         return video_list
-    
+
     @staticmethod
     def parse_ground_truth(csv_path):
         df = pd.read_csv(
-                csv_path, 
-                header=None, 
+                csv_path,
+                header=None,
                 names=["image_idx", "x", "y", "w", "h"],
                 usecols=[0,2,3,4,5]
         )
-        df = df[(df["w"] > 0) & (df["h"] > 0)]
+        df = df.set_index("image_idx")
+        full_index = pd.RangeIndex(start=df.index.min(), stop=df.index.max() + 1)
+        df = df.reindex(full_index, fill_value=0)
         gt_rects = df[["x", "y", "w", "h"]].values.astype(np.float32)
-        image_indices = df["image_idx"].values.astype(int) - 1
+        image_indices = df.index.values.astype(int) - 1
         gt_rects = list(zip(image_indices, gt_rects))
         return gt_rects
-    
+
     def __getitem__(self, i):
         if self._videos is None:
             self._videos = self.parse()
         return self._videos[i]
-    
+
     def __len__(self):
         if self._videos is None:
             self._videos = self.parse()
