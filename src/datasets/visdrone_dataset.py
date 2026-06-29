@@ -56,9 +56,9 @@ class VisDroneDataset:
     @staticmethod
     def parse_ground_truth(csv_path):
         bboxes = pd.read_csv(csv_path, header=None, names=["x", "y", "w", "h"])
-        valid_boxes_idx = bboxes[~bboxes['w'].isna()].index.astype(int).values
-        gt_rects = bboxes.loc[valid_boxes_idx].values.astype(int)
-        gt_rects = list(zip(valid_boxes_idx, gt_rects))
+        bboxes = bboxes.fillna(0)
+        gt_rects = bboxes.values.astype(int)
+        gt_rects = list(zip(bboxes.index.values, gt_rects))
         return gt_rects
 
     def __getitem__(self, i):

@@ -20,20 +20,24 @@ class SiamFCDataset(torch.utils.data.Dataset):
         self.max_gap = 10
         print(f"Total videos: {len(self.videos)}")
         
-        self.video_slots = [max(0, len(v.gt_rects) - self.min_gap) for v in self.videos]
-    
+        self.valid_gt_rects = [
+            [(fi, rect) for fi, rect in v.gt_rects if rect[2] > 0 and rect[3] > 0]
+            for v in self.videos
+        ]
+        self.video_slots = [max(0, len(valid) - self.min_gap) for valid in self.valid_gt_rects]
         self.cumulative_slots = np.cumsum(self.video_slots).tolist()
 
         self.augmentor = SiameseAugmentor(apply_augmentation=self.apply_augmentation)
 
     def _create_data_point(self, video_index, examplar_index, search_index):
         video = self.videos[video_index]
-    
-        gt_z = video.gt_rects[examplar_index][1]
-        gt_x = video.gt_rects[search_index][1]
+        valid_rects = self.valid_gt_rects[video_index]
 
-        img_z = video.source[video.gt_rects[examplar_index][0]]
-        img_x = video.source[video.gt_rects[search_index][0]]
+        gt_z = valid_rects[examplar_index][1]
+        gt_x = valid_rects[search_index][1]
+
+        img_z = video.source[valid_rects[examplar_index][0]]
+        img_x = video.source[valid_rects[search_index][0]]
         avg_chans = np.mean(img_z, axis=(0, 1))
 
         def get_sz(bbox):
@@ -78,7 +82,7 @@ class SiamFCDataset(torch.utils.data.Dataset):
         video = self.videos[video_index]
 
         low = exemplar_frame_index + self.min_gap
-        high = min(len(video.gt_rects) - 1, exemplar_frame_index + self.max_gap)
+        high = min(len(self.valid_gt_rects[video_index]) - 1, exemplar_frame_index + self.max_gap)
         search_frame_index = random.randint(low, high)
         
         examplar_image, search_image, label = self._create_data_point(video_index, exemplar_frame_index, search_frame_index)
