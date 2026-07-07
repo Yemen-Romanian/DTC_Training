@@ -42,7 +42,11 @@ class SiamBANDataset(torch.utils.data.Dataset):
         self.max_gap = 10
         print(f"Total videos: {len(self.videos)}")
 
-        self.video_slots = [max(0, len(v.gt_rects) - self.min_gap) for v in self.videos]
+        self.valid_gt_rects = [
+            [(fi, rect) for fi, rect in v.gt_rects if rect[2] > 0 and rect[3] > 0]
+            for v in self.videos
+        ]
+        self.video_slots = [max(0, len(valid) - self.min_gap) for valid in self.valid_gt_rects]
         self.cumulative_slots = np.cumsum(self.video_slots).tolist()
 
         if self.augmentation:
@@ -60,19 +64,20 @@ class SiamBANDataset(torch.utils.data.Dataset):
 
         video = self.videos[video_index]
         low = exemplar_index + self.min_gap
-        high = min(len(video.gt_rects) - 1, exemplar_index + self.max_gap)
+        high = min(len(self.valid_gt_rects[video_index]) - 1, exemplar_index + self.max_gap)
         search_index = random.randint(low, high)
 
         return self._create_sample(video_index, exemplar_index, search_index)
 
     def _create_sample(self, video_index: int, exemplar_index: int, search_index: int):
         video = self.videos[video_index]
+        valid_rects = self.valid_gt_rects[video_index]
 
-        gt_z = video.gt_rects[exemplar_index][1]  # [x, y, w, h]
-        gt_x = video.gt_rects[search_index][1]    # [x, y, w, h]
+        gt_z = valid_rects[exemplar_index][1]  # [x, y, w, h]
+        gt_x = valid_rects[search_index][1]    # [x, y, w, h]
 
-        img_z = video.source[video.gt_rects[exemplar_index][0]]
-        img_x = video.source[video.gt_rects[search_index][0]]
+        img_z = video.source[valid_rects[exemplar_index][0]]
+        img_x = video.source[valid_rects[search_index][0]]
         avg_chans = np.mean(img_z, axis=(0, 1))
 
         # Crop scale derived from exemplar context (SiamFC convention)
