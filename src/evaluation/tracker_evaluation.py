@@ -5,10 +5,9 @@ import pandas as pd
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from datasets.dataset_factory import create_dataset
+from datasets.utils.video import Video
 from evaluation.metrics import match_boxes
 from models.trackers.tracker_factory import create_tracker
-from utils.config import Config
 
 
 def _convert_gt_for_evaluation(frame_id, gt_rect, class_id=0, track_id=0):
@@ -68,21 +67,20 @@ def _evaluate_single_video(model_config, state_dict, dataset_label, video, devic
     return dataset_label, video.label, video_metrics
 
 
-def evaluate_tracker(state_dict, config: Config, paths_dict: dict, device='cpu', max_workers=None):
-    model_config = config.get_model_config()
+def evaluate_tracker(model_config: dict, videos: dict[str, list[Video]], state_dict: str | dict = None, device='cpu', max_workers=None):
     evaluation_results = {}
-    all_videos = {label: create_dataset(label, path).parse() for label, path in paths_dict.items()}
-    overall_number_of_videos = sum(len(videos) for videos in all_videos.values())
-    
-    # Prepare shared memory for state_dict
-    shared_state_dict = {k: v.cpu().detach().clone().share_memory_() for k, v in state_dict.items()}
+    overall_number_of_videos = sum(len(v) for v in videos.values())
+
+    shared_state_dict = (
+        {k: v.cpu().detach().clone().share_memory_() for k, v in state_dict.items()}
+        if isinstance(state_dict, dict) else state_dict
+    )
 
     worker_count = max_workers or max((os.cpu_count() or 2) - 1, 1)
-    
-    # On Windows, we must use a context with 'spawn' or just use the default
+
     with ProcessPoolExecutor(max_workers=worker_count) as executor:
         future_to_video = {}
-        for dataset_label, video_list in all_videos.items():
+        for dataset_label, video_list in videos.items():
             evaluation_results[dataset_label] = {}
             for video in video_list:
                 future = executor.submit(_evaluate_single_video, model_config, shared_state_dict, dataset_label, video, device)
@@ -105,7 +103,7 @@ def calculate_average_metrics(evaluation_results):
         for metrics in videos.values():
             for name in metrics.keys():
                 average_metrics[name].append(metrics[name])
-    
+
     for name in average_metrics.keys():
         average_metrics[name] = np.mean(average_metrics[name])
     return average_metrics
