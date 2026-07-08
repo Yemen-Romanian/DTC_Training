@@ -1,3 +1,4 @@
+import argparse
 import os
 import numpy as np
 from tqdm import tqdm
@@ -8,6 +9,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from datasets.utils.video import Video
 from evaluation.metrics import match_boxes
 from models.trackers.tracker_factory import create_tracker
+from datasets.dataset_factory import create_dataset
+from utils.config import load_config
 
 
 def _convert_gt_for_evaluation(frame_id, gt_rect, class_id=0, track_id=0):
@@ -70,6 +73,7 @@ def _evaluate_single_video(model_config, state_dict, dataset_label, video, devic
 def evaluate_tracker(model_config: dict, videos: dict[str, list[Video]], state_dict: str | dict = None, device='cpu', max_workers=None):
     evaluation_results = {}
     overall_number_of_videos = sum(len(v) for v in videos.values())
+    print(f"Overall number of videos: {overall_number_of_videos}")
 
     shared_state_dict = (
         {k: v.cpu().detach().clone().share_memory_() for k, v in state_dict.items()}
@@ -106,4 +110,34 @@ def calculate_average_metrics(evaluation_results):
 
     for name in average_metrics.keys():
         average_metrics[name] = np.mean(average_metrics[name])
-    return average_metrics
+    return dict(average_metrics)
+
+def run_evaluation(evaluation_config, model_config):
+    print(f"Evaluation config: {evaluation_config}")
+    print(f"Model config: {model_config}")
+
+    if ('protocol' not in evaluation_config or 'datasets' not in evaluation_config):
+        print("Error: 'protocol' and 'datasets' must be provided in the evaluation config (see the example in configs/ folder")
+        return
+
+    protocol = evaluation_config['protocol'] # for future usage
+    datasets_paths = evaluation_config['datasets']
+    videos = {label: create_dataset(label, path).parse() for label, path in datasets_paths.items()}
+
+    print("Starting evaluation")
+    per_video_metrics = evaluate_tracker(model_config=model_config, videos=videos)
+    averaged_metrics = calculate_average_metrics(per_video_metrics)
+    print(f"Per video metrics: {per_video_metrics}")
+    print(f"Averaged metrics: {averaged_metrics}")
+    print("Done!")
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Tracker Evaluation Demo")
+    parser.add_argument('--evaluation_config', type=str, required=True, help="Path to evaluation .toml config. See the example in configs/ folder in the root of the project")
+    parser.add_argument('--model_config', type=str, required=True, help="Path to .toml file containing model's configuration. If only name is provided, it is assumed to be located in configs folder in the root dir of the project.")
+    args = parser.parse_args()
+
+    eval_config = load_config(args.evaluation_config)
+    model_config = load_config(args.model_config)
+    run_evaluation(evaluation_config=eval_config, model_config=model_config)

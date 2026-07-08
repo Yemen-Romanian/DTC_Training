@@ -1,0 +1,6 @@
+protocol = "short-term" # long-term
+[datasets]
+    synthetic = "C:\\Users\\yevhe\\PhDProjects\\datasets\\Synthetic\\val"
+    #uav123 = "C:\\Users\\yevhe\\PhDProjects\\datasets\\UAV123_Test\\val"
+    #visdrone = "C:\\Users\\yevhe\\PhDProjects\\datasets\\VisDrone\\val"
+    # manual = "C:\\Users\\yevhe\\PhDProjects\\datasets\\UAV_manual_dataset\\test"

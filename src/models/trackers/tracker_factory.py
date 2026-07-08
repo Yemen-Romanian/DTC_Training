@@ -19,7 +19,7 @@ def create_tracker(model_config: dict, state_dict: str | dict = None, device: st
     model_id = model_config['id']
     device = device or model_config.get('params', {}).get('device', 'cpu')
     if state_dict is None:
-        state_dict = model_config.get('params', {}).get('weights_path')
+        state_dict = model_config.get('params', {}).get('weights')
 
     if model_id == 'siamfc':
         model = SiamFCNet.from_config(model_config)

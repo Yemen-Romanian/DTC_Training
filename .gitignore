@@ -13,4 +13,5 @@ configs/*
 !configs/siamfc.toml
 !configs/vit.toml
 !configs/nano.toml
+!configs/evaluation.toml
 /.zed

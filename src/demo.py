@@ -4,8 +4,6 @@ import numpy as np
 import pandas as pd
 import collections
 import time
-import tomllib
-from pathlib import Path
 
 from utils.video_source import VideoSource
 from datasets.utils.video import Video
@@ -16,6 +14,7 @@ from datasets.visdrone_dataset import VisDroneDataset
 from evaluation.metrics import match_boxes
 from models.trackers.tracker_factory import create_tracker
 from utils.paths import Paths
+from utils.config import load_config
 
 TRUE_COLOR = (0, 255, 0)  # Green for ground truth
 FALSE_COLOR = (0, 0, 255)  # Red for predictions
@@ -39,7 +38,7 @@ def main():
         tracker = None
         tracker_results = pd.read_csv(args.tracker_results)
     else:
-        model_config = load_model_config(args.model_config)
+        model_config = load_config(args.model_config)
         state_dict_path = str(Paths.model_weights_dir() / model_config['weights']) if 'weights' in model_config else None
         tracker = create_tracker(model_config, state_dict=state_dict_path)
         tracker_results = None
@@ -238,15 +237,6 @@ def draw_object_loss_text(frame, relative_position=(0.30, 0.03)):
     position = (int(frame.shape[1] * relative_position[0]), int(frame.shape[0] * relative_position[1]))
     frame = cv2.putText(frame, "Object is lost", position, cv2.FONT_HERSHEY_SIMPLEX, text_scale, TEXT_COLOR, 2)
     return frame
-
-def load_model_config(model_config_path):
-    model_config_path = Path(model_config_path)
-    if not Path.is_absolute(model_config_path):
-        model_config_path = Paths.config_dir() / model_config_path
-
-    with open(model_config_path, 'rb') as f:
-       model_config = tomllib.load(f)
-    return model_config
 
 def create_video_from_input_info(video_path: str) -> Video:
     video_source = VideoSource(video_path)
