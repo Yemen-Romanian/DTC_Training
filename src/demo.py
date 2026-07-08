@@ -2,9 +2,10 @@ import argparse
 import cv2
 import numpy as np
 import pandas as pd
-import torch
 import collections
 import time
+import tomllib
+from pathlib import Path
 
 from utils.video_source import VideoSource
 from datasets.utils.video import Video
@@ -23,6 +24,7 @@ TEXT_COLOR = (255, 255, 255) # White text
 def main():
     parser = argparse.ArgumentParser(description="Tracking Demo")
     parser.add_argument('--video_path', type=str, required=True, help="Path to the input video file or image sequence")
+    parser.add_argument('--model_config', type=str, required=True, help="Path to .toml file containing model's configuration. If only name is provided, it is assumed to be located in configs folder in the root dir of the project.")
     parser.add_argument('--gt_path', type=str, required=False, help="Path to the ground truth annotations file.")
     parser.add_argument('--data_type', type=str, required=False, choices=['synthetic', 'manual', 'uav123', 'visdrone'], help="Type of the dataset to use for demo")
     parser.add_argument('--tracker_results', type=str, required=False, help='Path to CSV file with tracker results to visualize. If not provided, the demo will create a tracker and run it in real time.')
@@ -37,19 +39,8 @@ def main():
         tracker = None
         tracker_results = pd.read_csv(args.tracker_results)
     else:
-        # Default config for demo purposes
-        model_config = {
-            'id': 'siamban',
-            'backbone': {
-                'type': 'MobileNetV3',
-                'freeze': True,
-                'pretrained': True
-            },
-            'params': {
-                'device': 'cuda' if torch.cuda.is_available() else 'cpu'
-            }
-        }
-        state_dict_path = str(Paths.model_weights_dir() / "siamban_synth_real_iou_0.6336_iog_0.7688_center_dist_33.2327_center_dist_norm_0.2996.pth")
+        model_config = load_model_config(args.model_config)
+        state_dict_path = str(Paths.model_weights_dir() / model_config['weights']) if 'weights' in model_config else None
         tracker = create_tracker(model_config, state_dict=state_dict_path)
         tracker_results = None
 
@@ -247,6 +238,15 @@ def draw_object_loss_text(frame, relative_position=(0.30, 0.03)):
     position = (int(frame.shape[1] * relative_position[0]), int(frame.shape[0] * relative_position[1]))
     frame = cv2.putText(frame, "Object is lost", position, cv2.FONT_HERSHEY_SIMPLEX, text_scale, TEXT_COLOR, 2)
     return frame
+
+def load_model_config(model_config_path):
+    model_config_path = Path(model_config_path)
+    if not Path.is_absolute(model_config_path):
+        model_config_path = Paths.config_dir() / model_config_path
+
+    with open(model_config_path, 'rb') as f:
+       model_config = tomllib.load(f)
+    return model_config
 
 def create_video_from_input_info(video_path: str) -> Video:
     video_source = VideoSource(video_path)
