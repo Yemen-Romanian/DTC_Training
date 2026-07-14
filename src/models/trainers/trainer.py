@@ -5,6 +5,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from datasets.dataset_factory import create_dataset
 from evaluation.tracker_evaluation import evaluate_tracker, calculate_average_metrics
 from models.abstract_trainable import AbstractTrainable
 from utils.config import Config
@@ -43,6 +44,11 @@ class Trainer:
 
         self.epoch_num = config.get_training_param('epochs_num')
         self.evaluation_interval = config.get_training_param('evaluation_interval')
+        self.model_config = config.get_model_config()
+
+        self.eval_val_videos = self._parse_eval_videos(config.get_val_paths())
+        test_paths = config.get_test_paths()
+        self.eval_test_videos = self._parse_eval_videos(test_paths) if test_paths else None
 
     def train(self):
         best_val_loss = float('inf')
@@ -55,11 +61,11 @@ class Trainer:
             self.logger.add_scalar('val_loss', val_loss, epoch)
             self.lr_scheduler.step(val_loss)
 
-            if epoch > 0 and (val_loss < best_val_loss or abs(val_loss - best_val_loss) < 0.05):
+            if (val_loss < best_val_loss or abs(val_loss - best_val_loss) < 0.05):
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                 self.logger.info("Running evaluation on validation set...")
-                avg_results = self._run_evaluation(epoch, self.config.get_val_paths(), 'val')
+                avg_results = self._run_evaluation(epoch, self.eval_val_videos, 'val')
                 checkpoint_name = "_".join([f"{metric_name}_{avg_results[metric_name]:.4f}" for metric_name in avg_results])
                 self.logger.log_model(self.nn_module, name=checkpoint_name)
                 self.logger.info(f"New model saved with val loss: {val_loss:.8f}. Current best val loss: {best_val_loss:.8f}.")
@@ -68,7 +74,7 @@ class Trainer:
 
         if self._test_ds_available:
             self.logger.info("Running final evaluation on test set...")
-            self._run_evaluation(self.epoch_num - 1, self.config.get_test_paths(), 'test')
+            self._run_evaluation(self.epoch_num - 1, self.eval_test_videos, 'test')
 
     def _train_epoch(self, epoch) -> float:
         self.nn_module.train()
@@ -101,9 +107,13 @@ class Trainer:
         self.logger.info(f"Epoch {epoch+1}/{self.epoch_num}, Val Loss: {avg_loss:.8f}")
         return avg_loss
 
-    def _run_evaluation(self, epoch, paths_dict, prefix) -> dict:
+    @staticmethod
+    def _parse_eval_videos(paths_dict: dict) -> dict:
+        return {label: create_dataset(label, path).parse() for label, path in paths_dict.items()}
+
+    def _run_evaluation(self, epoch, videos, prefix) -> dict:
         self.logger.info(f"Evaluating on {prefix} set...")
-        results = evaluate_tracker(self.nn_module.state_dict(), self.config, paths_dict)
+        results = evaluate_tracker(self.model_config, videos, state_dict=self.nn_module.state_dict())
         avg_results = calculate_average_metrics(results)
 
         for metric_name, metric_value in avg_results.items():

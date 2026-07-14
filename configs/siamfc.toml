@@ -1,0 +1,7 @@
+id = "siamfc"
+weights = "siamfc.pth"
+[backbone]
+    type = "AlexNet"
+    freeze = false
+[params]
+    device = "cuda"

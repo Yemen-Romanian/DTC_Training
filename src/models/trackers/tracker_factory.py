@@ -15,9 +15,11 @@ def _load_weights(model, state_dict, device):
         raise TypeError(f"Expected str path or dict for state_dict, got {type(state_dict)}")
 
 
-def create_tracker(model_config: dict, state_dict: str|dict = None, device: str = None):
+def create_tracker(model_config: dict, state_dict: str | dict = None, device: str = None):
     model_id = model_config['id']
     device = device or model_config.get('params', {}).get('device', 'cpu')
+    if state_dict is None:
+        state_dict = model_config.get('params', {}).get('weights')
 
     if model_id == 'siamfc':
         model = SiamFCNet.from_config(model_config)
@@ -35,5 +37,5 @@ def create_tracker(model_config: dict, state_dict: str|dict = None, device: str 
         tracker = TrackerViT()
     else:
         raise ValueError(f"Unknown tracker type {model_id}. Available trackers: siamfc, nano")
-    
+
     return tracker

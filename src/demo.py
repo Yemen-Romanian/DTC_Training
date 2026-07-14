@@ -2,7 +2,6 @@ import argparse
 import cv2
 import numpy as np
 import pandas as pd
-import torch
 import collections
 import time
 
@@ -15,6 +14,7 @@ from datasets.visdrone_dataset import VisDroneDataset
 from evaluation.metrics import match_boxes
 from models.trackers.tracker_factory import create_tracker
 from utils.paths import Paths
+from utils.config import load_config
 
 TRUE_COLOR = (0, 255, 0)  # Green for ground truth
 FALSE_COLOR = (0, 0, 255)  # Red for predictions
@@ -23,6 +23,7 @@ TEXT_COLOR = (255, 255, 255) # White text
 def main():
     parser = argparse.ArgumentParser(description="Tracking Demo")
     parser.add_argument('--video_path', type=str, required=True, help="Path to the input video file or image sequence")
+    parser.add_argument('--model_config', type=str, required=True, help="Path to .toml file containing model's configuration. If only name is provided, it is assumed to be located in configs folder in the root dir of the project.")
     parser.add_argument('--gt_path', type=str, required=False, help="Path to the ground truth annotations file.")
     parser.add_argument('--data_type', type=str, required=False, choices=['synthetic', 'manual', 'uav123', 'visdrone'], help="Type of the dataset to use for demo")
     parser.add_argument('--tracker_results', type=str, required=False, help='Path to CSV file with tracker results to visualize. If not provided, the demo will create a tracker and run it in real time.')
@@ -37,19 +38,8 @@ def main():
         tracker = None
         tracker_results = pd.read_csv(args.tracker_results)
     else:
-        # Default config for demo purposes
-        model_config = {
-            'id': 'siamban',
-            'backbone': {
-                'type': 'MobileNetV3',
-                'freeze': True,
-                'pretrained': True
-            },
-            'params': {
-                'device': 'cuda' if torch.cuda.is_available() else 'cpu'
-            }
-        }
-        state_dict_path = str(Paths.model_weights_dir() / "siamban_synth_real_iou_0.6336_iog_0.7688_center_dist_33.2327_center_dist_norm_0.2996.pth")
+        model_config = load_config(args.model_config)
+        state_dict_path = str(Paths.model_weights_dir() / model_config['weights']) if 'weights' in model_config else None
         tracker = create_tracker(model_config, state_dict=state_dict_path)
         tracker_results = None
 

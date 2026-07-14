@@ -1,0 +1,8 @@
+id = "siamban"
+weights = "siamban_synth_real_iou_0.6336_iog_0.7688_center_dist_33.2327_center_dist_norm_0.2996.pth"
+[backbone]
+    type = "MobileNetV3"
+    freeze = true
+    pretrained = true
+[params]
+    device = "cuda"
