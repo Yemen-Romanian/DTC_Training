@@ -228,11 +228,8 @@ class MLFlower(object):
             for k, v in metrics.items():mlflow.log_metric(k, v)
             for local_file_path in artifacts:
                 if self.remote_storage_folder is not None:
-                    print(f"Artifact uri: {mlflow.get_artifact_uri()}")
-                    print(self.remote_storage_folder)
                     # remote_folder = self.remote_storage_folder + mlflow.get_artifact_uri().split(':/')[1] + '/'
                     self.scp_file_to_remote(local_file_path, mlflow.get_artifact_uri() + "/")
-                    mlflow.log_artifact(local_file_path)
                 else:
                     mlflow.log_artifact(local_file_path)
 
