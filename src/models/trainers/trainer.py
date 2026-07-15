@@ -10,6 +10,8 @@ from evaluation.tracker_evaluation import evaluate_tracker, calculate_average_me
 from models.abstract_trainable import AbstractTrainable
 from utils.config import Config
 from utils.experiment_logger import ExperimentLogger
+from utils.tools_MLFlower import MLFlower
+from utils.mlflow_logging import save_training_run
 
 
 class Trainer:
@@ -38,6 +40,19 @@ class Trainer:
         experiment_name = f"{model_id}_training_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
         self.logger = ExperimentLogger(experiment_name)
 
+        mlflow_logging = config.get_param("mlflow_logging", False)
+        print(mlflow_logging)
+        print(config._config_data)
+        self.mlflower = MLFlower(
+            host = os.environ['MLFLOW_HOST'],
+            port = os.environ['MLFLOW_PORT'],
+            username_mlflow = os.environ.get('MLFLOW_TRACKING_USERNAME'),
+            password_mlflow = os.environ.get('MLFLOW_TRACKING_PASSWORD')
+        ) if mlflow_logging else None
+
+        if mlflow_logging:
+            self.logger.info(f"MLFlower available: {self.mlflower.is_available}")
+
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.nn_module.to(self.device)
         self.logger.info(f"CUDA available: {torch.cuda.is_available()}")
@@ -50,8 +65,11 @@ class Trainer:
         test_paths = config.get_test_paths()
         self.eval_test_videos = self._parse_eval_videos(test_paths) if test_paths else None
 
+        self.best_model_path = None
+
     def train(self):
         best_val_loss = float('inf')
+        best_val_metrics = {}
 
         for epoch in range(self.epoch_num):
             train_loss = self._train_epoch(epoch)
@@ -61,20 +79,40 @@ class Trainer:
             self.logger.add_scalar('val_loss', val_loss, epoch)
             self.lr_scheduler.step(val_loss)
 
-            if (val_loss < best_val_loss or abs(val_loss - best_val_loss) < 0.05):
+            if epoch > 0 and (val_loss < best_val_loss or abs(val_loss - best_val_loss) < 0.05):
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                 self.logger.info("Running evaluation on validation set...")
                 avg_results = self._run_evaluation(epoch, self.eval_val_videos, 'val')
-                checkpoint_name = "_".join([f"{metric_name}_{avg_results[metric_name]:.4f}" for metric_name in avg_results])
-                self.logger.log_model(self.nn_module, name=checkpoint_name)
-                self.logger.info(f"New model saved with val loss: {val_loss:.8f}. Current best val loss: {best_val_loss:.8f}.")
+
+                if not best_val_metrics or all(avg_results[k] >= best_val_metrics[k] for k in avg_results.keys()):
+                    best_val_metrics = avg_results
+                    checkpoint_name = "_".join([f"{metric_name}_{avg_results[metric_name]:.4f}" for metric_name in avg_results])
+                    self.logger.log_model(self.nn_module, name=checkpoint_name)
+                    self.best_model_path = self.logger.logging_dir / f"{checkpoint_name}.pth"
+                    self.logger.info(f"New model saved with val loss: {val_loss:.8f}. Current best val loss: {best_val_loss:.8f}.")
 
             self.logger.info(f"Current learning rate: {self.lr_scheduler.get_last_lr()[0]:.6f}")
 
+        # Restore the best-by-validation checkpoint so the final test evaluation and the
+        # logged model both reflect the best weights, not the last epoch's (which the
+        # in-memory module has drifted to by the end of training).
+        if self.best_model_path is not None:
+            self.logger.info(f"Loading best checkpoint before final evaluation: {self.best_model_path}")
+            self.nn_module.load_state_dict(torch.load(self.best_model_path, map_location=self.device))
+
+        test_metrics = {}
         if self._test_ds_available:
             self.logger.info("Running final evaluation on test set...")
-            self._run_evaluation(self.epoch_num - 1, self.eval_test_videos, 'test')
+            test_metrics = self._run_evaluation(self.epoch_num - 1, self.eval_test_videos, 'test')
+
+        if self.mlflower is not None and self.mlflower.is_available:
+            self.logger.info("Pushing results to MLflow...")
+            run_id = save_training_run(
+                self.mlflower, self.config, self.nn_module,
+                best_val_metrics, test_metrics, self.best_model_path,
+            )
+            self.logger.info(f"Results pushed to MLflow (run_id={run_id}).")
 
     def _train_epoch(self, epoch) -> float:
         self.nn_module.train()

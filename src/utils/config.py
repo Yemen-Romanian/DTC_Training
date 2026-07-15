@@ -24,6 +24,9 @@ class Config:
     def get_model_config(self):
         return self._config_data["model"]
 
+    def get_param(self, param_name: str, default=None):
+        return self._config_data.get(param_name, default)
+
 
 def load_config(config_path):
     config_path = Path(config_path)

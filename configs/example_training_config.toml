@@ -1,3 +1,6 @@
+experiment_name = "synthetic_only_tracker_training"
+mlflow_logging = true
+
 [train_path]
     synthetic = ""
     uav123 = ""

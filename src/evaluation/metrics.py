@@ -56,14 +56,6 @@ def match_boxes(df1, df2):
             center_dist = center_distance(box1, box2)
             center_dist_norm = center_dist / math.sqrt(box1_area) if box1_area > 0 else 0
 
-            print('---------------------')
-            print('box1', box1, 'area', box1_area)
-            print('box2', box2, 'area', box2_area)
-            print('I/U', iou)
-            print('I/G', iog)
-            print('dist', center_dist)
-            print('dist_norm', center_dist_norm)
-
             metrics_list.append({
                 'iou': iou,
                 'iog': iog,
