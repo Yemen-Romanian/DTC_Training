@@ -55,6 +55,8 @@ def main():
 
 def run_demo_with_gt(video, tracker, tracker_results, debug_mode, gt_rects):
     current_gt_index = 0
+    init_counter = 0
+    miss_counter = 0
     frame_times = collections.deque(maxlen=30)
     cv2.namedWindow("Tracking Demo", cv2.WND_PROP_FULLSCREEN)
     cv2.setWindowProperty("Tracking Demo", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -94,13 +96,23 @@ def run_demo_with_gt(video, tracker, tracker_results, debug_mode, gt_rects):
         bbox_gt = convert_gt_for_evaluation(frame_idx + 1, gt_rect)
         tp, fp, fn, metrics_list = match_boxes(bbox_gt, bbox_pred)
 
+        if fp > 0 or fn > 0:
+            miss_counter += 1
+            if miss_counter > 20 and gt_rect.any() and not tracker_results:
+                tracker.initialize(frame, gt_rect)
+                init_counter += 1
+                miss_counter = 0
+        if tp > 0:
+            miss_counter = 0
+
         bbox_to_draw = (bbox_pred['x1'].values[0],
                         bbox_pred['y1'].values[0],
                         bbox_pred['x2'].values[0] - bbox_pred['x1'].values[0],
                         bbox_pred['y2'].values[0] - bbox_pred['y1'].values[0])
 
         results_frame = draw_frame_number(results_frame, frame_idx + 1)
-        results_frame = draw_metrics_info(results_frame, tp=tp, fp=fp, fn=fn, metrics_list=metrics_list)
+        results_frame = draw_metrics_info(results_frame, tp=tp, fp=fp, fn=fn, miss=miss_counter,
+            init=init_counter, metrics_list=metrics_list)
         results_frame = draw_confidence_info(results_frame, confidence)
 
         if fps is not None:
@@ -210,13 +222,14 @@ def draw_frame_number(frame, frame_number, relative_position=(0.01, 0.03)):
     return frame
 
 
-def draw_metrics_info(frame, tp, fp, fn, metrics_list, relative_position=(0.15, 0.03)):
+def draw_metrics_info(frame, tp, fp, fn, metrics_list, miss=0, init=0, relative_position=(0.15, 0.03)):
     text_scale = 1.0
     text_scale = max(0.5, min(frame.shape[1], frame.shape[0]) / 1000 * text_scale)
     position = (int(frame.shape[1] * relative_position[0]), int(frame.shape[0] * relative_position[1]))
     metrics = metrics_list[0] if metrics_list else {}
     metrics_str = ", ".join(f"{k}: {v:.3f}" for k, v in metrics.items())
     metrics_str += f", TP: {tp}, FP: {fp}, FN: {fn}"
+    metrics_str += f", Miss: {miss}, Init: {init}"
     frame = cv2.putText(frame, metrics_str, position, cv2.FONT_HERSHEY_SIMPLEX, text_scale, TEXT_COLOR, 2)
     return frame
 
