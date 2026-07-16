@@ -85,7 +85,7 @@ class Trainer:
                 self.logger.info("Running evaluation on validation set...")
                 avg_results = self._run_evaluation(epoch, self.eval_val_videos, 'val')
 
-                if not best_val_metrics or all(avg_results[k] >= best_val_metrics[k] for k in avg_results.keys()):
+                if (not best_val_metrics) or (avg_results['iou'] > best_val_metrics['iou'] or avg_results['iog'] > best_val_metrics['iog']):
                     best_val_metrics = avg_results
                     checkpoint_name = "_".join([f"{metric_name}_{avg_results[metric_name]:.4f}" for metric_name in avg_results])
                     self.logger.log_model(self.nn_module, name=checkpoint_name)
