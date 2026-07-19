@@ -61,6 +61,10 @@ def save_training_run(mlflower, config, model, val_metrics: dict, test_metrics: 
 
     # Log on CPU so the model reloads on machines without a GPU (no map_location needed).
     model.to('cpu')
+    dataset_descriptors = _build_dataset_descriptors(config)
+    params['train_size'] = sum(len(d['samples']) for d in dataset_descriptors if d['context'] == 'training')
+    params['validation_size'] = sum(len(d['samples']) for d in dataset_descriptors if d['context'] == 'validation')
+    params['test_size'] = sum(len(d['samples']) for d in dataset_descriptors if d['context'] == 'testing')
 
     return mlflower.save_experiment(
         experiment_name=experiment_name,
