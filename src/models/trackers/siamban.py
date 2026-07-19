@@ -48,7 +48,7 @@ def _head_branch(in_ch: int, out_ch: int) -> nn.Sequential:
 
 class BANHead(nn.Module):
     """
-    Box Adaptive Network head that performs classification and 
+    Box Adaptive Network head that performs classification and
     bbox regression for a single set of feature z and x.
     This unit is taken from https://arxiv.org/abs/2003.06761
 
@@ -210,7 +210,7 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
 
         # Foreground score map: softmax over the 2-class dimension, take foreground score
         score = torch.softmax(cls[0], dim=0)[1].cpu().numpy()  # [17, 17]
-        confidence = self._calculate_confidence(score)
+        confidence = self._calculate_confidence(cls.cpu().numpy())
 
         score = (1 - self.window_influence) * score + self.window_influence * self.window
 
@@ -264,5 +264,8 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
         self.s_z = np.sqrt((self.target_sz[0] + context) * (self.target_sz[1] + context))
         self.s_x = self.s_z * (self.SEARCH_SIZE / self.EXEMPLAR_SIZE)
 
-    def _calculate_confidence(self, score_map: np.ndarray) -> float:
-        return score_map.max()
+    def _calculate_confidence(self, classification_map: np.ndarray) -> float:
+        class_map_diff = classification_map[0, 1] - classification_map[0, 0] # foreground - background scores
+        min_value = np.min(class_map_diff)
+        apce = (np.max(class_map_diff) - min_value)**2 / np.mean((class_map_diff - min_value)**2)
+        return apce
