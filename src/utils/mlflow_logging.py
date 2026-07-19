@@ -72,6 +72,6 @@ def save_training_run(mlflower, config, model, val_metrics: dict, test_metrics: 
         metrics=metrics,
         model=model,
         registered_model_name=registered_model_name,
-        datasets=_build_dataset_descriptors(config),
+        datasets=dataset_descriptors,
         artifacts=artifacts,
     )
