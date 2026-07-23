@@ -4,6 +4,7 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import numpy as np
 
 from datasets.dataset_factory import create_dataset
 from evaluation.tracker_evaluation import evaluate_tracker, calculate_average_metrics
@@ -66,6 +67,8 @@ class Trainer:
         self.eval_test_videos = self._parse_eval_videos(test_paths) if test_paths else None
 
         self.best_model_path = None
+        self.train_loss_history = list()
+        self.val_loss_history = list()
 
     def train(self):
         best_val_loss = float('inf')
@@ -74,9 +77,11 @@ class Trainer:
         for epoch in range(self.epoch_num):
             train_loss = self._train_epoch(epoch)
             self.logger.add_scalar('train_loss', train_loss, epoch)
+            self.train_loss_history.append(train_loss)
 
             val_loss = self._val_epoch(epoch)
             self.logger.add_scalar('val_loss', val_loss, epoch)
+            self.val_loss_history.append(val_loss)
             self.lr_scheduler.step(val_loss)
 
             if epoch > 0 and (val_loss < best_val_loss or abs(val_loss - best_val_loss) < 0.05):
@@ -107,10 +112,12 @@ class Trainer:
             test_metrics = self._run_evaluation(self.epoch_num - 1, self.eval_test_videos, 'test')
 
         if self.mlflower is not None and self.mlflower.is_available:
+            # add epoch metrics in the future
+            history = {"train_loss": self.train_loss_history, "val_loss": self.val_loss_history}
             self.logger.info("Pushing results to MLflow...")
             run_id = save_training_run(
                 self.mlflower, self.config, self.nn_module,
-                best_val_metrics, test_metrics, self.best_model_path,
+                best_val_metrics, test_metrics, history, self.best_model_path
             )
             self.logger.info(f"Results pushed to MLflow (run_id={run_id}).")
 
