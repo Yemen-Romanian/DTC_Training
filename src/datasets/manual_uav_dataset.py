@@ -49,7 +49,7 @@ class ManualUAVDataset:
 
         logging.info(f"Video successfully extracted: {len(self._videos)}")
         return self._videos
-    
+
     @staticmethod
     def parse_ground_truth(csv_path):
         bboxes = pd.read_csv(
@@ -63,12 +63,12 @@ class ManualUAVDataset:
         image_indices = bboxes.index.values.astype(int) - 1
         gt_rects = list(zip(image_indices, gt_rects))
         return gt_rects
-    
+
     def __getitem__(self, i):
         if self._videos is None:
             self._videos = self.parse()
         return self._videos[i]
-    
+
     def __len__(self):
         if self._videos is None:
             self._videos = self.parse()

@@ -11,6 +11,7 @@ from datasets.synthetic_dataset import SyntheticDataset
 from datasets.manual_uav_dataset import ManualUAVDataset
 from datasets.uav123_dataset import UAV123Dataset
 from datasets.visdrone_dataset import VisDroneDataset
+from datasets.vot_dataset import VOTDataset
 from evaluation.metrics import match_boxes
 from models.trackers.tracker_factory import create_tracker
 from utils.paths import Paths
@@ -25,7 +26,7 @@ def main():
     parser.add_argument('--video_path', type=str, required=True, help="Path to the input video file or image sequence")
     parser.add_argument('--model_config', type=str, required=True, help="Path to .toml file containing model's configuration. If only name is provided, it is assumed to be located in configs folder in the root dir of the project.")
     parser.add_argument('--gt_path', type=str, required=False, help="Path to the ground truth annotations file.")
-    parser.add_argument('--data_type', type=str, required=False, choices=['synthetic', 'manual', 'uav123', 'visdrone'], help="Type of the dataset to use for demo")
+    parser.add_argument('--data_type', type=str, required=False, choices=['synthetic', 'manual', 'uav123', 'visdrone', 'vot'], help="Type of the dataset to use for demo")
     parser.add_argument('--tracker_results', type=str, required=False, help='Path to CSV file with tracker results to visualize. If not provided, the demo will create a tracker and run it in real time.')
     parser.add_argument('--debug', action='store_true', help='Whether to manually control the video playback (Default to false).')
 
@@ -267,8 +268,10 @@ def create_gt_rects(gt_path: str, data_type: str):
         gt_rects = UAV123Dataset.parse_ground_truth(gt_path)
     elif data_type == 'visdrone':
         gt_rects = VisDroneDataset.parse_ground_truth(gt_path)
+    elif data_type == 'vot':
+        gt_rects = VOTDataset.parse_ground_truth(gt_path)
     else:
-        raise ValueError(f"Unsupported data type: {data_type}. Supported types are: synthetic, manual, uav123.")
+        raise ValueError(f"Unsupported data type: {data_type}. Supported types are: synthetic, manual, uav123, visdrone, vot.")
 
     return gt_rects
 

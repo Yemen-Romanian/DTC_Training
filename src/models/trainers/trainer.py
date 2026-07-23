@@ -4,10 +4,12 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import numpy as np
 
 from datasets.dataset_factory import create_dataset
 from evaluation.tracker_evaluation import evaluate_tracker, calculate_average_metrics
 from models.abstract_trainable import AbstractTrainable
+from models.trackers.tracker_factory import resolve_state_dict
 from utils.config import Config
 from utils.experiment_logger import ExperimentLogger
 from utils.tools_MLFlower import MLFlower
@@ -57,6 +59,8 @@ class Trainer:
         self.nn_module.to(self.device)
         self.logger.info(f"CUDA available: {torch.cuda.is_available()}")
 
+        self._load_pretrained_weights(config.get_model_config())
+
         self.epoch_num = config.get_training_param('epochs_num')
         self.evaluation_interval = config.get_training_param('evaluation_interval')
         self.model_config = config.get_model_config()
@@ -66,6 +70,23 @@ class Trainer:
         self.eval_test_videos = self._parse_eval_videos(test_paths) if test_paths else None
 
         self.best_model_path = None
+        self.train_loss_history = list()
+        self.val_loss_history = list()
+
+    def _load_pretrained_weights(self, model_config: dict):
+        """Start training from the checkpoint listed as `weights` in the model config, if any.
+
+        Path resolution is shared with the tracker factory: an absolute path is used as is,
+        a bare file name is looked up in output/model_weights. Without a `weights` entry the
+        module keeps its random initialization, i.e. training starts from scratch.
+        """
+        weights_path = resolve_state_dict(model_config)
+        if weights_path is None:
+            self.logger.info("No pre-trained weights in the model config, training from scratch.")
+            return
+
+        self.nn_module.load_state_dict(torch.load(weights_path, map_location=self.device))
+        self.logger.info(f"Loaded pre-trained weights from {weights_path}")
 
     def train(self):
         best_val_loss = float('inf')
@@ -74,9 +95,11 @@ class Trainer:
         for epoch in range(self.epoch_num):
             train_loss = self._train_epoch(epoch)
             self.logger.add_scalar('train_loss', train_loss, epoch)
+            self.train_loss_history.append(train_loss)
 
             val_loss = self._val_epoch(epoch)
             self.logger.add_scalar('val_loss', val_loss, epoch)
+            self.val_loss_history.append(val_loss)
             self.lr_scheduler.step(val_loss)
 
             if epoch > 0 and (val_loss < best_val_loss or abs(val_loss - best_val_loss) < 0.05):
@@ -85,7 +108,7 @@ class Trainer:
                 self.logger.info("Running evaluation on validation set...")
                 avg_results = self._run_evaluation(epoch, self.eval_val_videos, 'val')
 
-                if not best_val_metrics or all(avg_results[k] >= best_val_metrics[k] for k in avg_results.keys()):
+                if (not best_val_metrics) or (avg_results['iou'] > best_val_metrics['iou'] or avg_results['iog'] > best_val_metrics['iog']):
                     best_val_metrics = avg_results
                     checkpoint_name = "_".join([f"{metric_name}_{avg_results[metric_name]:.4f}" for metric_name in avg_results])
                     self.logger.log_model(self.nn_module, name=checkpoint_name)
@@ -107,10 +130,12 @@ class Trainer:
             test_metrics = self._run_evaluation(self.epoch_num - 1, self.eval_test_videos, 'test')
 
         if self.mlflower is not None and self.mlflower.is_available:
+            # add epoch metrics in the future
+            history = {"train_loss": self.train_loss_history, "val_loss": self.val_loss_history}
             self.logger.info("Pushing results to MLflow...")
             run_id = save_training_run(
                 self.mlflower, self.config, self.nn_module,
-                best_val_metrics, test_metrics, self.best_model_path,
+                best_val_metrics, test_metrics, history, self.best_model_path
             )
             self.logger.info(f"Results pushed to MLflow (run_id={run_id}).")
 

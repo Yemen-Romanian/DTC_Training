@@ -3,6 +3,7 @@ import io
 import os
 import json
 import hashlib
+import numpy as np
 import pandas as pd
 import requests
 from requests.auth import HTTPBasicAuth
@@ -225,7 +226,16 @@ class MLFlower(object):
             params['run_id'] = run.info.run_id
 
             for k, v in params.items():mlflow.log_param(k, v)
-            for k, v in metrics.items():mlflow.log_metric(k, v)
+
+            for k, v in metrics.items():
+                if isinstance(v, float) or isinstance(v, int):
+                    mlflow.log_metric(k, v)
+                elif isinstance(v, list) or isinstance(v, np.ndarray):
+                    for idx, val in enumerate(v):
+                        mlflow.log_metric(k, val, step=idx)
+                else:
+                   raise ValueError(f"Only real numbers and lists can be logged as metrics, received {type(v)}")
+
             for local_file_path in artifacts:
                 if self.remote_storage_folder is not None:
                     # remote_folder = self.remote_storage_folder + mlflow.get_artifact_uri().split(':/')[1] + '/'

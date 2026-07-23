@@ -2,6 +2,7 @@ from datasets.synthetic_dataset import SyntheticDataset
 from datasets.manual_uav_dataset import ManualUAVDataset
 from datasets.uav123_dataset import UAV123Dataset
 from datasets.visdrone_dataset import VisDroneDataset
+from datasets.vot_dataset import VOTDataset
 
 def create_dataset(name: str, path):
     if name == 'synthetic':
@@ -12,7 +13,9 @@ def create_dataset(name: str, path):
         dataset = ManualUAVDataset(path, video_extension='.mp4')
     elif name == 'visdrone':
         dataset = VisDroneDataset(path)
+    elif name == 'vot':
+        dataset = VOTDataset(path)
     else:
-        raise ValueError(f'Unsupported dataset {name}. Possible values: synthetic, uav123, manual')
+        raise ValueError(f'Unsupported dataset {name}. Possible values: synthetic, uav123, manual, visdrone, vot')
 
     return dataset

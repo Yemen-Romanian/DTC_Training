@@ -31,7 +31,7 @@ def _build_dataset_descriptors(config) -> list:
     return descriptors
 
 
-def save_training_run(mlflower, config, model, val_metrics: dict, test_metrics: dict,
+def save_training_run(mlflower, config, model, val_metrics: dict, test_metrics: dict, history: dict=None,
                       best_model_path=None, registered_model_name=None):
     """Push a completed training run to MLflow.
 
@@ -40,6 +40,7 @@ def save_training_run(mlflower, config, model, val_metrics: dict, test_metrics: 
     - raw val/test metric dicts are namespaced with ``val_``/``test_`` prefixes,
     - dataset descriptors are derived from the config's split paths,
     - the model is logged on CPU so it reloads without a GPU.
+    - history dict contains per-epoch parameters and metrics (e.g. loss)
 
     Returns the MLflow run id.
     """
@@ -56,6 +57,14 @@ def save_training_run(mlflower, config, model, val_metrics: dict, test_metrics: 
 
     metrics = {f"val_{name}": value for name, value in val_metrics.items()}
     metrics.update({f"test_{name}": value for name, value in test_metrics.items()})
+
+    if history is not None:
+        if 'val_metrics' in history:
+            metrics.update({'val_metrics': history['val_metrics']})
+        if 'train_loss' in history:
+            metrics.update({'train_loss': history['train_loss']})
+        if 'val_loss' in history:
+            metrics.update({'val_loss': history['val_loss']})
 
     artifacts = [str(best_model_path)] if best_model_path else []
 
