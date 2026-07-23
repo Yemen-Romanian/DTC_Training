@@ -9,6 +9,7 @@ import numpy as np
 from datasets.dataset_factory import create_dataset
 from evaluation.tracker_evaluation import evaluate_tracker, calculate_average_metrics
 from models.abstract_trainable import AbstractTrainable
+from models.trackers.tracker_factory import resolve_state_dict
 from utils.config import Config
 from utils.experiment_logger import ExperimentLogger
 from utils.tools_MLFlower import MLFlower
@@ -58,6 +59,8 @@ class Trainer:
         self.nn_module.to(self.device)
         self.logger.info(f"CUDA available: {torch.cuda.is_available()}")
 
+        self._load_pretrained_weights(config.get_model_config())
+
         self.epoch_num = config.get_training_param('epochs_num')
         self.evaluation_interval = config.get_training_param('evaluation_interval')
         self.model_config = config.get_model_config()
@@ -69,6 +72,21 @@ class Trainer:
         self.best_model_path = None
         self.train_loss_history = list()
         self.val_loss_history = list()
+
+    def _load_pretrained_weights(self, model_config: dict):
+        """Start training from the checkpoint listed as `weights` in the model config, if any.
+
+        Path resolution is shared with the tracker factory: an absolute path is used as is,
+        a bare file name is looked up in output/model_weights. Without a `weights` entry the
+        module keeps its random initialization, i.e. training starts from scratch.
+        """
+        weights_path = resolve_state_dict(model_config)
+        if weights_path is None:
+            self.logger.info("No pre-trained weights in the model config, training from scratch.")
+            return
+
+        self.nn_module.load_state_dict(torch.load(weights_path, map_location=self.device))
+        self.logger.info(f"Loaded pre-trained weights from {weights_path}")
 
     def train(self):
         best_val_loss = float('inf')

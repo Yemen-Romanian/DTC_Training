@@ -26,8 +26,12 @@ def _load_weights(model, state_dict, device):
         raise TypeError(f"Expected str path or dict for state_dict, got {type(state_dict)}")
 
 
-def _resolve_state_dict(model_config, state_dict):
-    """Fall back to the config's `weights` entry, resolved like demo.py resolves it."""
+def resolve_state_dict(model_config, state_dict=None):
+    """Fall back to the config's `weights` entry, resolved like demo.py resolves it.
+
+    An absolute path is used as is, a bare file name is looked up in output/model_weights.
+    Returns None when neither a state dict nor a `weights` entry is given.
+    """
     if state_dict is not None:
         return state_dict
 
@@ -50,7 +54,7 @@ def _resolve_state_dict(model_config, state_dict):
 def create_tracker(model_config: dict, state_dict: str | dict = None, device: str = None):
     model_id = model_config['id']
     device = device or model_config.get('params', {}).get('device', 'cpu')
-    state_dict = _resolve_state_dict(model_config, state_dict)
+    state_dict = resolve_state_dict(model_config, state_dict)
 
     if model_id == 'siamfc':
         model = SiamFCNet.from_config(model_config)
