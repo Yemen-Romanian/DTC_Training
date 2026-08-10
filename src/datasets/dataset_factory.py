@@ -3,6 +3,7 @@ from datasets.manual_uav_dataset import ManualUAVDataset
 from datasets.uav123_dataset import UAV123Dataset
 from datasets.visdrone_dataset import VisDroneDataset
 from datasets.vot_dataset import VOTDataset
+from datasets.mmfw_dataset import MMFWDataset
 
 def create_dataset(name: str, path):
     if name == 'synthetic':
@@ -15,7 +16,9 @@ def create_dataset(name: str, path):
         dataset = VisDroneDataset(path)
     elif name == 'vot':
         dataset = VOTDataset(path)
+    elif name == 'mmfw':
+        dataset = MMFWDataset(path)
     else:
-        raise ValueError(f'Unsupported dataset {name}. Possible values: synthetic, uav123, manual, visdrone, vot')
+        raise ValueError(f'Unsupported dataset {name}. Possible values: synthetic, uav123, manual, visdrone, vot, mmfw')
 
     return dataset
