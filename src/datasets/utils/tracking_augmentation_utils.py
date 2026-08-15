@@ -170,8 +170,10 @@ class SiameseAugmentor:
                 x_crop = np.flip(x_crop, axis=1).copy()
                 label = np.flip(label, axis=1).copy()
 
-        z_tensor = torch.from_numpy(z_crop).permute(2, 0, 1).float() / 255.0
-        x_tensor = torch.from_numpy(x_crop).permute(2, 0, 1).float() / 255.0
+        # Crops stay uint8 all the way to the GPU; TrainableSiamFC.train_step does the
+        # /255 normalization there. ColorJitter supports uint8 tensors and returns uint8.
+        z_tensor = torch.from_numpy(np.ascontiguousarray(z_crop.transpose(2, 0, 1)))
+        x_tensor = torch.from_numpy(np.ascontiguousarray(x_crop.transpose(2, 0, 1)))
         label_tensor = torch.from_numpy(label).float()
 
         if self.apply_augmentation:

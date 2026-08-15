@@ -145,13 +145,23 @@ class TrainableSiamBAN(AbstractTrainable):
         self.net = SiamBANNet.from_config(model_config)
         self.loss_fn = BANLoss(cls_weight=1.0, reg_weight=1.0)
 
+    @staticmethod
+    def _prepare_batch(batch, device):
+        """Move a batch to the device and normalize the uint8 crops to [0, 1] there.
+
+        The dataset hands over uint8 crops so the worker->main transfer stays small;
+        the /255 is a trivial GPU op.
+        """
+        z, x, cls_target, reg_target = [t.to(device, non_blocking=True) for t in batch]
+        return z.float().div_(255.0), x.float().div_(255.0), cls_target, reg_target
+
     def train_step(self, batch, device) -> torch.Tensor:
-        z, x, cls_target, reg_target = [t.to(device) for t in batch]
+        z, x, cls_target, reg_target = self._prepare_batch(batch, device)
         cls_pred, reg_pred = self.net(z, x)
         return self.loss_fn(cls_pred, reg_pred, cls_target, reg_target)
 
     def val_step(self, batch, device) -> torch.Tensor:
-        z, x, cls_target, reg_target = [t.to(device) for t in batch]
+        z, x, cls_target, reg_target = self._prepare_batch(batch, device)
         cls_pred, reg_pred = self.net(z, x)
         return self.loss_fn(cls_pred, reg_pred, cls_target, reg_target)
 

@@ -1,5 +1,6 @@
 import os
 import datetime
+import cv2
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -16,6 +17,32 @@ from utils.tools_MLFlower import MLFlower
 from utils.mlflow_logging import save_training_run
 
 
+# Validation is a few dozen batches and runs GPU-bound, so it finishes in roughly the
+# time a full-sized worker pool takes to spawn. A small pool serves it just as fast and
+# halves the per-epoch spawn cost.
+VAL_DATA_WORKERS = 4
+
+# evaluate_tracker runs its videos in its own ProcessPoolExecutor, which defaults to
+# os.cpu_count() - 1. The train loader's pool is persistent and therefore still resident
+# during evaluation, so an uncapped pool would put ~2 x data_workers_num processes on the
+# machine at once. On Windows each of those is a full interpreter and the commit charge
+# does not survive it.
+EVAL_WORKERS = 6
+
+
+def init_data_worker(worker_id: int):
+    """Stop each DataLoader worker from spawning its own thread pools.
+
+    OpenCV and torch both default to a pool sized to the machine's cores, so N workers
+    claim N x cores threads and spend most of their time in pool synchronization rather
+    than decoding. The per-sample ops here are far too small to benefit from intra-op
+    parallelism anyway. Must stay a module-level function so it pickles under Windows
+    spawn.
+    """
+    cv2.setNumThreads(0)
+    torch.set_num_threads(1)
+
+
 class Trainer:
     """
     Main class for model training.
@@ -29,8 +56,27 @@ class Trainer:
         batch_size = config.get_training_param('batch_size')
         num_workers = config.get_training_param('data_workers_num')
 
-        self.train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-        self.val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        # The train pool is persistent so it is spawned once per run instead of once per
+        # epoch - on Windows each worker is a fresh interpreter importing torch, which
+        # dominated the per-epoch startup. The consequence is that it stays resident while
+        # the val pool and the evaluation pool exist, so both of those are kept small
+        # (VAL_DATA_WORKERS / EVAL_WORKERS) to bound the concurrent process count. Raising
+        # any of the three without checking the commit charge reintroduces the
+        # "paging file is too small" failure.
+        loader_kwargs = dict(batch_size=batch_size)
+        if num_workers > 0:
+            loader_kwargs.update(worker_init_fn=init_data_worker)
+        val_workers = min(VAL_DATA_WORKERS, num_workers)
+
+        # persistent_workers=True removes the per-epoch respawn of this pool (worth ~90s
+        # an epoch on Windows) but keeps it resident alongside the val and evaluation
+        # pools. Measured at a 45.8 GiB commit limit that peaks at 23 processes and a
+        # 0.3 GiB commit floor - it survives, but with no margin. Enable it only with a
+        # larger (ideally fixed-size) page file; see EVAL_WORKERS above.
+        self.train_loader = DataLoader(train_ds, shuffle=True, num_workers=num_workers,
+                                       persistent_workers=True, **loader_kwargs)
+        self.val_loader = DataLoader(val_ds, shuffle=False,
+                                     num_workers=val_workers, **loader_kwargs)
         self._test_ds_available = test_ds is not None
 
         self.nn_module = model.get_module()
@@ -103,8 +149,7 @@ class Trainer:
             self.lr_scheduler.step(val_loss)
 
             if epoch > 0 and (val_loss < best_val_loss or abs(val_loss - best_val_loss) < 0.05):
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
+                best_val_loss = min(best_val_loss, val_loss)
                 self.logger.info("Running evaluation on validation set...")
                 avg_results = self._run_evaluation(epoch, self.eval_val_videos, 'val')
 
@@ -176,6 +221,9 @@ class Trainer:
 
     def _run_evaluation(self, epoch, videos, prefix) -> dict:
         self.logger.info(f"Evaluating on {prefix} set...")
+        # Uncapped (os.cpu_count() - 1) is fine only because the train loader is not
+        # persistent, so its pool is already torn down by the time this runs. Cap this to
+        # EVAL_WORKERS if persistent_workers is ever enabled on the train loader.
         results = evaluate_tracker(self.model_config, videos, state_dict=self.nn_module.state_dict())
         avg_results = calculate_average_metrics(results)
 

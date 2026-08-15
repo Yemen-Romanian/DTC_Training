@@ -170,13 +170,23 @@ class TrainableSiamFC(AbstractTrainable):
         self.net = SiamFCNet.from_config(model_config)
         self.loss_fn = BalancedLoss()
 
+    @staticmethod
+    def _prepare_batch(batch, device):
+        """Move a batch to the device and normalize the uint8 crops to [0, 1] there.
+
+        The dataset hands over uint8 crops so the worker->main transfer stays small;
+        the /255 is a trivial GPU op.
+        """
+        z, x, gt = [t.to(device, non_blocking=True) for t in batch]
+        return z.float().div_(255.0), x.float().div_(255.0), gt
+
     def train_step(self, batch, device) -> torch.Tensor:
-        z, x, gt = [t.to(device) for t in batch]
+        z, x, gt = self._prepare_batch(batch, device)
         pred = self.net(z, x)
         return self.loss_fn(pred, gt)
 
     def val_step(self, batch, device) -> torch.Tensor:
-        z, x, gt = [t.to(device) for t in batch]
+        z, x, gt = self._prepare_batch(batch, device)
         pred = self.net(z, x)
         return self.loss_fn(pred, gt)
 
