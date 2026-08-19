@@ -1,10 +1,5 @@
 protocol = "short-term" # long-term
 [datasets]
-    #synthetic = "C:\\Users\\yevhe\\PhDProjects\\datasets\\Synthetic\\val"
-    #uav123 = "C:\\Users\\yevhe\\PhDProjects\\datasets\\UAV123_Test\\val"
-    #visdrone = "C:\\Users\\yevhe\\PhDProjects\\datasets\\VisDrone\\val"
-
-    #uav123 = "..\\..\\TestTrackingDataset\\UAV123"
-    manual = "..\\..\\TestTrackingDataset\\UAV_manual_dataset\\test"
-    #vot = "..\\..\\TestTrackingDataset\\VOT"
-    #mmfw = "..\\..\\MMFW-UAV-Processed\\Wide-Angle-Sensor-Subset"
+    synthetic = "C:\\Users\\yevhe\\PhDProjects\\datasets\\Synthetic\\val"
+    uav123 = "C:\\Users\\yevhe\\PhDProjects\\datasets\\UAV123_Test\\val"
+    visdrone = "C:\\Users\\yevhe\\PhDProjects\\datasets\\VisDrone\\val"
