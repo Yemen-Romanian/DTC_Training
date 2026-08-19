@@ -11,6 +11,7 @@ from evaluation.metrics import match_boxes
 from models.trackers.tracker_factory import create_tracker
 from datasets.dataset_factory import create_dataset
 from utils.config import load_config
+from utils.tools_MLFlower import MLFlower
 
 SHORT_TERM_PROTOCOL = 'short-term'
 
@@ -170,6 +171,47 @@ def calculate_average_metrics(evaluation_results):
         average_metrics[name] = float(np.mean(values)) if values else float('nan')
     return dict(average_metrics)
 
+
+def save_to_mlflow(averaged_metrics, protocol, model_config, evaluation_config):
+    host = os.environ['MLFLOW_HOST']
+    port = os.environ['MLFLOW_PORT']
+    username = os.environ.get('MLFLOW_TRACKING_USERNAME')
+    password = os.environ.get('MLFLOW_TRACKING_PASSWORD')
+
+    mlflower = MLFlower(
+        host=host,
+        port=port,
+        username_mlflow=username,
+        password_mlflow=password
+    )
+
+    params = {
+        'model_id': model_config['id'],
+        'backbone': model_config['backbone']['type'],
+        'protocol': protocol,
+    }
+
+    descriptors = []
+    context = 'testing'
+    for source_name, path in evaluation_config['datasets'].items():
+        videos = create_dataset(source_name, path).parse()
+        descriptors.append({
+            'name': f"{context}_{source_name}",
+            'source': path,
+            'context': context,
+            'samples': [video.label for video in videos],
+        })
+
+    mlflower.save_experiment(
+        experiment_name='tracker_evaluation',
+        params=params,
+        metrics=averaged_metrics,
+        model=None,
+        registered_model_name=None,  # set a name to register into the Model Registry
+        datasets=descriptors
+    )
+
+
 def run_evaluation(evaluation_config, model_config):
     print(f"Evaluation config: {evaluation_config}")
     print(f"Model config: {model_config}")
@@ -185,6 +227,7 @@ def run_evaluation(evaluation_config, model_config):
     print("Starting evaluation")
     per_video_metrics = evaluate_tracker(model_config=model_config, videos=videos, protocol=protocol)
     averaged_metrics = calculate_average_metrics(per_video_metrics)
+    save_to_mlflow(averaged_metrics, protocol, model_config, evaluation_config)
     print(f"Per video metrics: {per_video_metrics}")
     print(f"Averaged metrics: {averaged_metrics}")
     print("Done!")
