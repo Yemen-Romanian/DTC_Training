@@ -11,6 +11,7 @@ from evaluation.metrics import match_boxes
 from models.trackers.tracker_factory import create_tracker
 from datasets.dataset_factory import create_dataset
 from utils.config import load_config
+from utils.paths import Paths
 from utils.tools_MLFlower import MLFlower
 
 SHORT_TERM_PROTOCOL = 'short-term'
@@ -202,11 +203,14 @@ def save_to_mlflow(averaged_metrics, protocol, model_config, evaluation_config):
             'samples': [video.label for video in videos],
         })
 
+    state_dict_path = str(Paths.model_weights_dir() / model_config['weights']) if 'weights' in model_config else None
+    tracker = create_tracker(model_config, state_dict=state_dict_path, device='cpu')
+
     mlflower.save_experiment(
         experiment_name='tracker_evaluation',
         params=params,
         metrics=averaged_metrics,
-        model=None,
+        model=tracker.model,
         registered_model_name=None,  # set a name to register into the Model Registry
         datasets=descriptors
     )
