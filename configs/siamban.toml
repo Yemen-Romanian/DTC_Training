@@ -1,5 +1,5 @@
 id = "siamban"
-weights = "siamban_synth_real_iou_0.6336_iog_0.7688_center_dist_33.2327_center_dist_norm_0.2996.pth"
+weights = "siamban_synth_real_iou_0.6716_iog_0.8045_center_dist_6.3730.pth"
 [backbone]
     type = "MobileNetV3"
     freeze = true
