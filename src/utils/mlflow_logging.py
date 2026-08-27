@@ -53,6 +53,7 @@ def save_training_run(mlflower, config, model, val_metrics: dict, test_metrics: 
         'batch_size': config.get_training_param('batch_size'),
         'lr': config.get_training_param('lr'),
         'epochs_num': config.get_training_param('epochs_num'),
+        'pretrained_path': model_config.get("weights", "")
     }
 
     metrics = {f"val_{name}": value for name, value in val_metrics.items()}
