@@ -8,7 +8,7 @@ import logging
 from models.abstract_trainable import AbstractTrainable
 from models.losses import BalancedLoss
 from models.trackers.tracker import SingleObjectTrackerBase, SingleObjectTrackResult, BoundingBox
-from datasets.utils.tracking_augmentation_utils import get_subwindow
+from datasets.utils.tracking_augmentation_utils import get_subwindow, mean_channels
 from datasets.siamfc_dataset import SiamFCDataset
 from models.trackers.feature_extractors import AlexNetFeatureExtractor, MobileNetV3FeatureExtractor
 from datasets.mixed_dataset import MixedDataset
@@ -104,7 +104,7 @@ class TrackerSiamFC(SingleObjectTrackerBase):
         context = 0.5 * self.target_sz.sum()
         self.s_z = np.sqrt((self.target_sz[0] + context) * (self.target_sz[1] + context))
         self.s_x = self.s_z * (self.ROI_SIZE / self.EXAMPLAR_SIZE)
-        z_crop = get_subwindow(image, self.pos, self.EXAMPLAR_SIZE, self.s_z, image.mean(axis=(0, 1)))
+        z_crop = get_subwindow(image, self.pos, self.EXAMPLAR_SIZE, self.s_z, mean_channels(image))
         z_tensor = torch.from_numpy(z_crop).permute(2, 0, 1).float().unsqueeze(0) / 255.0
         z_tensor = z_tensor.to(self.device)
         
@@ -112,10 +112,14 @@ class TrackerSiamFC(SingleObjectTrackerBase):
             self.examplar_features = self.model.extract_features(z_tensor, output_size=EXAMPLAR_FEATURE_SIZE)
 
     def track(self, image):
+        # Hoisted out of the loop: the fill depends only on the frame, not on the scale,
+        # so the old form recomputed the same full-frame mean once per scale.
+        avg_chans = mean_channels(image)
+
         crops = []
         for s in self.scales:
             cur_s_x = max(1.0, self.s_x * s)
-            crop = get_subwindow(image, self.pos, self.ROI_SIZE, cur_s_x, image.mean(axis=(0, 1)))
+            crop = get_subwindow(image, self.pos, self.ROI_SIZE, cur_s_x, avg_chans)
             crops.append(crop)
 
         x_batch = torch.from_numpy(np.stack(crops)).permute(0, 3, 1, 2).float().to(self.device) / 255.0

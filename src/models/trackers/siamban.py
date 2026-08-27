@@ -13,7 +13,7 @@ from models.trackers.tracker import SingleObjectTrackerBase, SingleObjectTrackRe
 from models.trackers.feature_extractors import AlexNetFeatureExtractor, MobileNetV3FeatureExtractor
 from datasets.mixed_dataset import MixedDataset
 from datasets.siamban_dataset import SiamBANDataset
-from datasets.utils.tracking_augmentation_utils import get_subwindow
+from datasets.utils.tracking_augmentation_utils import get_subwindow, mean_channels
 from utils.config import Config
 
 logger = logging.getLogger(__name__)
@@ -202,7 +202,7 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
 
         self._update_scales()
 
-        avg_chans = image.mean(axis=(0, 1))
+        avg_chans = mean_channels(image)
         z_crop = get_subwindow(image, self.pos, self.EXEMPLAR_SIZE, round(self.s_z), avg_chans)
         z_tensor = torch.from_numpy(z_crop).permute(2, 0, 1).float().unsqueeze(0).to(self.device) / 255.0
 
@@ -210,7 +210,7 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
             self.exemplar_features = self.model.extract_features(z_tensor, EXEMPLAR_FEATURE_SIZE)
 
     def track(self, image: np.ndarray) -> SingleObjectTrackResult:
-        avg_chans = image.mean(axis=(0, 1))
+        avg_chans = mean_channels(image)
         x_crop = get_subwindow(image, self.pos, self.SEARCH_SIZE, round(self.s_x), avg_chans)
         x_tensor = torch.from_numpy(x_crop).permute(2, 0, 1).float().unsqueeze(0).to(self.device) / 255.0
 
