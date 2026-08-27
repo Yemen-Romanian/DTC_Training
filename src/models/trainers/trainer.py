@@ -147,6 +147,7 @@ class Trainer:
             self.logger.add_scalar('val_loss', val_loss, epoch)
             self.val_loss_history.append(val_loss)
             self.lr_scheduler.step(val_loss)
+            self._log_branch_weights(epoch)
 
             if epoch > 0 and (val_loss < best_val_loss or abs(val_loss - best_val_loss) < 0.05):
                 best_val_loss = min(best_val_loss, val_loss)
@@ -184,10 +185,37 @@ class Trainer:
             )
             self.logger.info(f"Results pushed to MLflow (run_id={run_id}).")
 
+    def _branch_weights(self):
+        """Normalized backbone fusion weights, or None if this backbone has no branches.
+
+        Only multi-tap backbones (MobileNetV3MultiLayerFeatureExtractor) expose these. They are
+        worth watching: they say how much the network actually leans on each tap, so a run whose
+        weights collapse onto one branch has answered the multi-layer question negatively long
+        before the metrics do.
+        """
+        backbone = getattr(self.nn_module, 'backbone', None)
+        if backbone is None or not hasattr(backbone, 'branch_weights'):
+            return None
+        with torch.no_grad():
+            weights = backbone.branch_weights().detach().cpu().tolist()
+        taps = getattr(backbone, 'taps', tuple(range(len(weights))))
+        return list(zip(taps, weights))
+
+    def _log_branch_weights(self, epoch):
+        """Record the fusion weights for the epoch, to the log and to TensorBoard."""
+        branches = self._branch_weights()
+        if branches is None:
+            return
+        pretty = ", ".join(f"features[:{tap}]={weight:.4f}" for tap, weight in branches)
+        self.logger.info(f"Backbone branch weights: {pretty}")
+        for tap, weight in branches:
+            self.logger.add_scalar(f"branch_weight/features_{tap}", weight, epoch)
+
     def _train_epoch(self, epoch) -> float:
         self.nn_module.train()
         total_loss, num_batches = 0.0, 0
         pbar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.epoch_num}")
+        has_branches = self._branch_weights() is not None
 
         for batch in pbar:
             loss = self.model.train_step(batch, self.device)
@@ -198,6 +226,11 @@ class Trainer:
             total_loss += loss.item()
             num_batches += 1
             pbar.set_description(f"Epoch {epoch+1}/{self.epoch_num}, loss: {total_loss/num_batches:.6f}")
+            # Throttled: reading the weights forces a device sync, and they drift slowly.
+            if has_branches and num_batches % 20 == 0:
+                pbar.set_postfix_str(
+                    "w " + "/".join(f"{weight:.3f}" for _, weight in self._branch_weights())
+                )
 
         return total_loss / num_batches if num_batches > 0 else 0.0
 

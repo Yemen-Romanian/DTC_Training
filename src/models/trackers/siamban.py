@@ -10,7 +10,11 @@ import numpy as np
 from models.abstract_trainable import AbstractTrainable
 from models.losses import BANLoss
 from models.trackers.tracker import SingleObjectTrackerBase, SingleObjectTrackResult, BoundingBox
-from models.trackers.feature_extractors import AlexNetFeatureExtractor, MobileNetV3FeatureExtractor
+from models.trackers.feature_extractors import (
+    AlexNetFeatureExtractor,
+    MobileNetV3FeatureExtractor,
+    MobileNetV3MultiLayerFeatureExtractor,
+)
 from datasets.mixed_dataset import MixedDataset
 from datasets.siamban_dataset import SiamBANDataset
 from datasets.utils.tracking_augmentation_utils import get_subwindow, mean_channels
@@ -18,9 +22,10 @@ from utils.config import Config
 
 logger = logging.getLogger(__name__)
 
-# Feature map sizes after backbone + bilinear interpolation
-EXEMPLAR_FEATURE_SIZE = (6, 6)
-SEARCH_FEATURE_SIZE = (22, 22)
+# Feature map sizes are not fixed here: they depend on the backbone. MobileNetV3 emits 16x16 for
+# the 127px exemplar and 32x32 for the 255px search crop, AlexNet 6x6 and 22x22. What matters is
+# that the valid-padded correlation of the two yields the 17x17 response the training targets
+# expect (32-16+1 = 22-6+1 = 17), which every supported backbone satisfies.
 
 
 class DepthwiseCorr(nn.Module):
@@ -92,14 +97,6 @@ class BANHead(nn.Module):
         return cls, reg
 
 
-# Backbone output channels — kept here so SiamBANNet.from_config can look them up
-# without importing feature_extractors in two places.
-_BACKBONE_OUT_CHANNELS = {
-    'AlexNet': 128,
-    'MobileNetV3': 48,
-}
-
-
 class SiamBANNet(nn.Module):
     def __init__(self, backbone: nn.Module, in_channels: int, hidden_channels: int = 256):
         super().__init__()
@@ -107,13 +104,10 @@ class SiamBANNet(nn.Module):
         self.head = BANHead(in_channels, hidden_channels)
 
     def forward(self, z: torch.Tensor, x: torch.Tensor):
-        z_feat = self.extract_features(z, EXEMPLAR_FEATURE_SIZE)
-        x_feat = self.extract_features(x, SEARCH_FEATURE_SIZE)
-        return self.head(z_feat, x_feat)
+        return self.head(self.extract_features(z), self.extract_features(x))
 
-    def extract_features(self, image: torch.Tensor, output_size=None) -> torch.Tensor:
-        feat = self.backbone(image)
-        return feat
+    def extract_features(self, image: torch.Tensor) -> torch.Tensor:
+        return self.backbone(image)
 
     @classmethod
     def from_config(cls, model_config: dict) -> 'SiamBANNet':
@@ -133,11 +127,21 @@ class SiamBANNet(nn.Module):
                 freeze_weights=freeze_backbone,
                 pretrained=pretrained
             )
+        elif backbone_type == 'MobileNetV3Multi':
+            taps = tuple(backbone_config.get('taps', (4, 9)))
+            backbone = MobileNetV3MultiLayerFeatureExtractor(
+                taps=taps,
+                out_channels=backbone_config.get('out_channels', 48),
+                freeze_weights=freeze_backbone,
+                pretrained=pretrained
+            )
+            logger.info(f"Backbone taps: {taps} -> {backbone.out_channels} fused channels")
         else:
             raise ValueError(f"Unsupported backbone type: {backbone_type}")
 
-        in_channels = _BACKBONE_OUT_CHANNELS[backbone_type]
-        return cls(backbone, in_channels, hidden_channels)
+        # Read from the backbone rather than a lookup table, so the head can never drift out of
+        # sync with the width the backbone actually emits.
+        return cls(backbone, backbone.out_channels, hidden_channels)
 
 
 class TrainableSiamBAN(AbstractTrainable):
@@ -207,7 +211,7 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
         z_tensor = torch.from_numpy(z_crop).permute(2, 0, 1).float().unsqueeze(0).to(self.device) / 255.0
 
         with torch.no_grad():
-            self.exemplar_features = self.model.extract_features(z_tensor, EXEMPLAR_FEATURE_SIZE)
+            self.exemplar_features = self.model.extract_features(z_tensor)
 
     def track(self, image: np.ndarray) -> SingleObjectTrackResult:
         avg_chans = mean_channels(image)
@@ -215,7 +219,7 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
         x_tensor = torch.from_numpy(x_crop).permute(2, 0, 1).float().unsqueeze(0).to(self.device) / 255.0
 
         with torch.no_grad():
-            x_feat = self.model.extract_features(x_tensor, SEARCH_FEATURE_SIZE)
+            x_feat = self.model.extract_features(x_tensor)
             cls, reg = self.model.head(self.exemplar_features, x_feat)
 
         # Foreground score map: softmax over the 2-class dimension, take foreground score
