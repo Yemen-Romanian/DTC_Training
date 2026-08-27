@@ -186,18 +186,31 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
     RESPONSE_SIZE = 17
     STRIDE = 8
 
+    # Weight of the cosine window in the blended score, in [0, 1].
+    WINDOW_INFLUENCE = 0.30
+
+    # Rate at which the target size is smoothed towards the newly predicted one.
+    SIZE_LR = 0.1
+
+    # Strength of the scale/aspect-ratio penalty; 0.0 disables it.
+    PENALTY_K = 0.0
+
     def __init__(self, model: SiamBANNet, device: str):
         self.model = model
         self.device = device
         self.model.to(device)
         self.model.eval()
 
+        # Normalized by max, not sum. The score this is blended into is a softmax
+        # probability peaking near 1.0, so the window has to peak at 1.0 too. Dividing
+        # by the sum (as TrackerSiamFC does) drops the peak to 1/64, which made the
+        # window term worth at most 0.0028 against a score term weighted 0.824 - the
+        # spatial prior was ~250x weaker than WINDOW_INFLUENCE implies, i.e. inert.
+        # The sum form is correct in TrackerSiamFC only because it normalizes its
+        # response map to sum=1 first, putting both on the same scale.
         hann = np.hanning(self.RESPONSE_SIZE)
         self.window = np.outer(hann, hann)
-        self.window /= self.window.sum()
-
-        self.window_influence = 0.176
-        self.size_lr = 0.1
+        self.window /= self.window.max()
 
     def initialize(self, image: np.ndarray, bbox):
         # bbox: [x, y, w, h]
@@ -226,12 +239,20 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
         score = torch.softmax(cls[0], dim=0)[1].cpu().numpy()  # [17, 17]
         confidence = self._calculate_confidence(cls.cpu().numpy())
 
-        score = (1 - self.window_influence) * score + self.window_influence * self.window
+        reg_map = reg[0].cpu().numpy()  # [4, 17, 17] — (dl, dt, dr, db) per cell
+
+        # Two priors are applied to the classification score before the argmax, in this
+        # order: the scale/ratio penalty (per-cell, depends on what box that cell
+        # predicts) and then the cosine window (positional). Applying the penalty first
+        # matches the reference implementation - the window is a blend, so folding it in
+        # earlier would let it dilute the penalty rather than act on the penalized map.
+        score = score * self._size_penalty(reg_map)
+        score = (1 - self.WINDOW_INFLUENCE) * score + self.WINDOW_INFLUENCE * self.window
 
         r_max, c_max = np.unravel_index(score.argmax(), score.shape)
 
         # Decode (dl, dt, dr, db) at the best location
-        dl, dt, dr, db = reg[0, :, r_max, c_max].cpu().numpy()
+        dl, dt, dr, db = reg_map[:, r_max, c_max]
 
         image_center = self.SEARCH_SIZE // 2   # 127
         px = image_center + (c_max - self.RESPONSE_SIZE // 2) * self.STRIDE
@@ -254,9 +275,14 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
         w_img = np.clip(w_img, self.target_sz[1] / max_change, self.target_sz[1] * max_change)
         h_img = np.clip(h_img, self.target_sz[0] / max_change, self.target_sz[0] * max_change)
 
-        # Smooth update
-        self.pos = np.array([cy_img, cx_img])
-        self.target_sz = (1 - self.size_lr) * self.target_sz + self.size_lr * np.array([h_img, w_img])
+        # Smooth update. The centre is clamped to the frame: once it leaves, get_subwindow
+        # returns pure avg_chans padding, so the tracker sees a blank crop and can never
+        # recover on its own. Clamping keeps at least part of the search region over real
+        # pixels, leaving a chance to reacquire.
+        h_img_bound, w_img_bound = image.shape[0], image.shape[1]
+        self.pos = np.array([np.clip(cy_img, 0.0, h_img_bound - 1),
+                             np.clip(cx_img, 0.0, w_img_bound - 1)])
+        self.target_sz = (1 - self.SIZE_LR) * self.target_sz + self.SIZE_LR * np.array([h_img, w_img])
         self.target_sz = np.maximum(self.target_sz, 2.0)
         self._update_scales()
 
@@ -271,6 +297,44 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
     def to_device(self, device: str):
         self.device = device
         self.model.to(device)
+
+    def _size_penalty(self, reg_map: np.ndarray) -> np.ndarray:
+        """Down-weight cells whose predicted box disagrees in size or aspect with the target.
+
+        The cosine window is a purely positional prior: it says nothing about whether the
+        box a cell predicts is plausible. This is the other half of the standard SiamBAN
+        selection rule - a cell that would triple the target's area or flip its aspect
+        ratio is almost always a distractor or a bad regression, even when its
+        classification score is high.
+
+        Returns a [17, 17] multiplier in (0, 1]; identically 1.0 when PENALTY_K is 0.
+        """
+        if self.PENALTY_K <= 0.0:
+            return np.ones_like(reg_map[0])
+
+        # Predicted extents per cell, mapped from crop pixels to image pixels so they are
+        # comparable with target_sz. eps guards the ratios: reg is ReLU'd, so a cell can
+        # predict exactly 0 width or height.
+        eps = 1e-6
+        scale = self.s_x / self.SEARCH_SIZE
+        w = (reg_map[0] + reg_map[2]) * scale + eps   # dl + dr
+        h = (reg_map[1] + reg_map[3]) * scale + eps   # dt + db
+
+        target_h, target_w = self.target_sz[0] + eps, self.target_sz[1] + eps
+
+        def _change(ratio):
+            """Symmetric deviation from 1.0, so growing and shrinking are penalized alike."""
+            return np.maximum(ratio, 1.0 / ratio)
+
+        def _padded_size(width, height):
+            """Context-padded side length — the same convention as _update_scales."""
+            pad = 0.5 * (width + height)
+            return np.sqrt((width + pad) * (height + pad))
+
+        scale_change = _change(_padded_size(w, h) / _padded_size(target_w, target_h))
+        ratio_change = _change((target_w / target_h) / (w / h))
+
+        return np.exp(-(scale_change * ratio_change - 1.0) * self.PENALTY_K)
 
     def _update_scales(self):
         """Recompute s_z / s_x from the current target size."""
