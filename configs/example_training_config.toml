@@ -18,6 +18,9 @@ mlflow_logging = true
 #     manual = ""
 
 [training_params]
+    # Seed for random, numpy and torch. Comment out to draw a fresh one per run; either way
+    # the value actually used is logged to MLflow as seed_random/seed_numpy/seed_torch.
+    seed = 42
     batch_size = 16
     lr = 0.001
     epochs_num = 20
