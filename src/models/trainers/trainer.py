@@ -85,12 +85,15 @@ class Trainer:
         self.lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=5)
 
         model_id = config.get_model_config()['id']
-        experiment_name = f"{model_id}_training_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        self.logger = ExperimentLogger(experiment_name)
+        run_name = config.get_param('run_name') or f"{model_id}_training"
+        self.run_dir_name = f"{run_name}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.logger = ExperimentLogger(self.run_dir_name)
+
+        self.logger.log_dict(config.as_dict(), "effective_config.json")
+        for override in config.get_overrides():
+            self.logger.info(f"Config override applied: {override}")
 
         mlflow_logging = config.get_param("mlflow_logging", False)
-        print(mlflow_logging)
-        print(config._config_data)
         self.mlflower = MLFlower(
             host = os.environ['MLFLOW_HOST'],
             port = os.environ['MLFLOW_PORT'],
@@ -181,7 +184,8 @@ class Trainer:
             self.logger.info("Pushing results to MLflow...")
             run_id = save_training_run(
                 self.mlflower, self.config, self.nn_module,
-                best_val_metrics, test_metrics, history, self.best_model_path
+                best_val_metrics, test_metrics, history, self.best_model_path,
+                run_dir=self.run_dir_name
             )
             self.logger.info(f"Results pushed to MLflow (run_id={run_id}).")
 

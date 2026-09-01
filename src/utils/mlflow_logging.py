@@ -4,8 +4,28 @@ Keeps MLflow-domain translation (Config -> params, raw metric dicts -> namespace
 metrics, dataset paths -> MLflow dataset descriptors) out of both the Trainer and the
 reusable MLFlower class.
 """
+import subprocess
+
 from datasets.dataset_factory import create_dataset
+from utils.paths import Paths
 from utils.seeding import get_applied_seeds
+
+
+#: MLflow rejects over-long param values, and the limit has differed across versions.
+MAX_PARAM_CHARS = 480
+
+
+def _truncate(text: str) -> str:
+    return text if len(text) <= MAX_PARAM_CHARS else text[:MAX_PARAM_CHARS - 3] + "..."
+
+
+def _git_sha() -> str:
+    try:
+        result = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=Paths.output_dir().parent,
+                                capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
 
 
 def _build_dataset_descriptors(config) -> list:
@@ -33,7 +53,7 @@ def _build_dataset_descriptors(config) -> list:
 
 
 def save_training_run(mlflower, config, model, val_metrics: dict, test_metrics: dict, history: dict=None,
-                      best_model_path=None, registered_model_name=None):
+                      best_model_path=None, registered_model_name=None, run_dir=None):
     """Push a completed training run to MLflow.
 
     Translates DTC-domain objects into a generic ``MLFlower.save_experiment`` call:
@@ -54,7 +74,10 @@ def save_training_run(mlflower, config, model, val_metrics: dict, test_metrics: 
         'batch_size': config.get_training_param('batch_size'),
         'lr': config.get_training_param('lr'),
         'epochs_num': config.get_training_param('epochs_num'),
-        'pretrained_path': model_config.get("weights", "")
+        'pretrained_path': model_config.get("weights", ""),
+        'run_dir': run_dir or "",
+        'overrides': _truncate(", ".join(config.get_overrides())),
+        'git_sha': _git_sha(),
     }
 
     # Read from the seeding record rather than the config, so a seed that was generated for the
