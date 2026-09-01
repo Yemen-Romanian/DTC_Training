@@ -5,6 +5,7 @@ metrics, dataset paths -> MLflow dataset descriptors) out of both the Trainer an
 reusable MLFlower class.
 """
 from datasets.dataset_factory import create_dataset
+from utils.seeding import get_applied_seeds
 
 
 def _build_dataset_descriptors(config) -> list:
@@ -55,6 +56,18 @@ def save_training_run(mlflower, config, model, val_metrics: dict, test_metrics: 
         'epochs_num': config.get_training_param('epochs_num'),
         'pretrained_path': model_config.get("weights", "")
     }
+
+    # Read from the seeding record rather than the config, so a seed that was generated for the
+    # run is logged as faithfully as one that was configured. Logged per library even when the
+    # three agree, so a run is self-describing without knowing how seeding was wired.
+    seeds = get_applied_seeds()
+    if seeds is not None:
+        params.update({
+            'seed_random': seeds['random'],
+            'seed_numpy': seeds['numpy'],
+            'seed_torch': seeds['torch'],
+            'seed_source': seeds['source'],
+        })
 
     metrics = {f"val_{name}": value for name, value in val_metrics.items()}
     metrics.update({f"test_{name}": value for name, value in test_metrics.items()})
