@@ -188,7 +188,6 @@ def save_to_mlflow(averaged_metrics, protocol, model_config, evaluation_config):
 
     params = {
         'model_id': model_config['id'],
-        'backbone': model_config['backbone']['type'],
         'protocol': protocol,
     }
 
@@ -205,12 +204,13 @@ def save_to_mlflow(averaged_metrics, protocol, model_config, evaluation_config):
 
     state_dict_path = str(Paths.model_weights_dir() / model_config['weights']) if 'weights' in model_config else None
     tracker = create_tracker(model_config, state_dict=state_dict_path, device='cpu')
+    model = tracker.model if hasattr(tracker, "model") else None
 
     mlflower.save_experiment(
         experiment_name='tracker_evaluation',
         params=params,
         metrics=averaged_metrics,
-        model=tracker.model,
+        model=model,
         registered_model_name=None,  # set a name to register into the Model Registry
         datasets=descriptors
     )
