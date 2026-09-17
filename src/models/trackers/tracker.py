@@ -1,12 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-@dataclass
-class BoundingBox:
-    x: int
-    y: int
-    width: int
-    height: int
+from models.bbox import BoundingBox
 
 @dataclass
 class SingleObjectTrackResult:
