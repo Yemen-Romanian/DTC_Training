@@ -1,14 +1,14 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
 
 from models.bbox import BoundingBox
 
 @dataclass
 class DetectionResult:
-    bbox: BoundingBox
-    confidence: float
-    class_name: str
+    bbox: BoundingBox = field(default_factory=BoundingBox)
+    confidence: float = 0.0
+    class_name: str = ""
 
 class AbstractDetector(ABC):
     @abstractmethod
