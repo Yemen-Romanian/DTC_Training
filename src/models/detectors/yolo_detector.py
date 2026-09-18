@@ -1,4 +1,5 @@
 from typing import List
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -63,3 +64,21 @@ class YOLODetector(AbstractDetector):
             ))
 
         return detections
+
+if __name__ == '__main__':
+    detector = YOLODetector("yolo11n_4_drone_classes.pt", conf=0.5)
+    root_path = Path(r"Path to image folder")
+    for image_path in root_path.glob("*.jpg"):
+        image = cv2.imread(str(image_path))
+        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        results = detector.detect(rgb_image)
+
+        for idx, result in enumerate(results):
+            x, y, w, h = result.bbox.x, result.bbox.y, result.bbox.width, result.bbox.height
+            confidence = result.confidence
+            class_name = result.class_name
+            image_to_draw = cv2.rectangle(image, (x, y), (x+w,y+h), (0, 255, 0), 2)
+            print(f"Confidence: {confidence} for target {class_name}")
+            cv2.imshow("Detection", image_to_draw)
+            cv2.waitKey(0)
+    cv2.destroyAllWindows()
