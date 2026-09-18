@@ -1,3 +1,5 @@
+import argparse
+from collections import defaultdict
 from pathlib import Path
 import random
 import shutil
@@ -7,23 +9,53 @@ from tqdm import tqdm
 from PIL import Image
 import yaml
 
-def synthetic_to_yolo_format(root_dir: Path, class_names: dict, train_ratio: float = 0.8):
+def assign_splits(bbox_files, train_ratio: float = 0.8, seed: int = 0):
+    """Map each sequence's labels.txt to 'train' or 'val', holding out whole sequences.
+
+    Frames within one UE5 render are near-duplicates, so splitting per frame puts
+    nearly identical images in both halves and makes validation meaningless.
+    Sequences are single-class, so the split is stratified by class — otherwise a
+    class can disappear from val entirely.
+    """
+    by_class = defaultdict(list)
+    for bbox_file in bbox_files:
+        cls = pd.read_csv(bbox_file, header=None, usecols=[1]).iloc[:, 0].mode()[0]
+        by_class[int(cls)].append(bbox_file)
+
+    splits = {}
+    rng = random.Random(seed)
+    for cls, files in sorted(by_class.items()):
+        files = sorted(files)  # rglob order is not stable; sort before shuffling
+        rng.shuffle(files)
+        n_val = max(1, round(len(files) * (1 - train_ratio)))
+        for i, bbox_file in enumerate(files):
+            splits[bbox_file] = 'val' if i < n_val else 'train'
+        print(f"  class {cls}: {len(files)} sequences -> {n_val} val, {len(files) - n_val} train")
+
+    return splits
+
+def synthetic_to_yolo_format(root_dir: Path, class_names: dict, train_ratio: float = 0.8, seed: int = 0):
     yolo_result_dir = root_dir / "yolo_dataset"
     for split in ['train', 'val']:
         (yolo_result_dir / "images" / split).mkdir(parents=True, exist_ok=True)
         (yolo_result_dir / "labels" / split).mkdir(parents=True, exist_ok=True)
-    
+
     bbox_files = list(root_dir.rglob("labels.txt"))
     print(f"Found subdirectories with images: {len(bbox_files)}")
+
+    print("Assigning splits by sequence (stratified by class):")
+    splits = assign_splits(bbox_files, train_ratio=train_ratio, seed=seed)
 
     for bbox_file in bbox_files:
         data_dir = bbox_file.parent
         image_dir = data_dir / "images"
         dataset_prefix = data_dir.name
-        
-        df = pd.read_csv(bbox_file, header=None, names=['img_idx', 'class_id', 'x', 'y', 'w', 'h', 'unknown'])
-        
-        image_extensions = ('.jpg')
+
+        df = pd.read_csv(bbox_file, header=None,
+                         names=["img_idx", "class_id", "x", "y", "w", "h"],
+                         usecols=[0,1,2,3,4,5])
+
+        image_extensions = ('.jpg',)
         all_images = [f for f in image_dir.iterdir() if f.suffix.lower() in image_extensions]
 
         for img_path in tqdm(all_images, desc=f"Processing {dataset_prefix}"):
@@ -32,12 +64,12 @@ def synthetic_to_yolo_format(root_dir: Path, class_names: dict, train_ratio: flo
             if img_annots.empty:
                 print(f"Empty bounding box for {img_path}, skipping")
                 continue
-            
-            split = 'train' if random.random() < train_ratio else 'val'
+
+            split = splits[bbox_file]
             new_name_base = f"{dataset_prefix}_{img_path.stem}"
             new_img_path = yolo_result_dir / "images" / split / f"{new_name_base}{img_path.suffix}"
             new_label_path = yolo_result_dir / "labels" / split / f"{new_name_base}.txt"
-            
+
             shutil.copy(img_path, new_img_path)
             with Image.open(img_path) as img:
                 img_w, img_h = img.size
@@ -48,13 +80,15 @@ def synthetic_to_yolo_format(root_dir: Path, class_names: dict, train_ratio: flo
                 y_center = (row['y'] + row['h'] / 2) / img_h
                 w_norm = row['w'] / img_w
                 h_norm = row['h'] / img_h
-                
+
                 yolo_annots.append(f"{max(0, int(row['class_id'])-1)} {x_center:.6f} {y_center:.6f} {w_norm:.6f} {h_norm:.6f}")
 
             with open(new_label_path, 'w') as f:
-                f.write("\n".join(yolo_annots))
-               
-    # prepare YAML 
+                # Trailing newline matters: without it, concatenating label files
+                # welds the last record of one onto the first of the next.
+                f.write("\n".join(yolo_annots) + "\n")
+
+    # prepare YAML
     yaml_data = {
         'path': str(yolo_result_dir),
         'train': 'images/train',

@@ -4,7 +4,6 @@ output/training/*
 output/tensorboard_runs
 output/*
 !output/model_weights/
-*.pt
 __pycache__
 .vscode
 configs/*
