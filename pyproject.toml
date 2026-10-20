@@ -1,0 +1,44 @@
+[project]
+name = "dtc-training"
+version = "0.1.0"
+description = "Training and evaluation of Siamese single-object trackers for UAV tracking"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # Pinned exactly: paper results were produced with this build.
+    "torch==2.5.1",
+    "torchvision==0.20.1",
+    # torch 2.5.1 and the current env use numpy 1.x.
+    "numpy>=1.26.4,<2",
+    "opencv-python>=4.10,<4.11",
+    "pandas>=2.2",
+    "matplotlib>=3.9",
+    "pillow>=11",
+    "pyyaml>=6",
+    "requests>=2.32",
+    "tqdm>=4.67",
+    "tensorboard>=2.20",
+    "mlflow>=3.13",
+    "ultralytics>=8.3",
+    "onnx>=1.21",
+    "onnxruntime>=1.26",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9",
+    "ipykernel>=6.29",
+]
+
+[tool.uv]
+# src/ is a flat set of top-level modules (datasets, models, utils, evaluation),
+# not an installable package, so uv only manages the environment.
+package = false
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu118" }
+torchvision = { index = "pytorch-cu118" }
