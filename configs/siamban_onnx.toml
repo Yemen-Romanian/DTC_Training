@@ -1,0 +1,6 @@
+id = "siamban_onnx"
+# Bare names are looked up in output/model_weights; absolute paths are used as is.
+# Exported from siamban_mixed_seed42_iou_0.6635_... by src/utils/onnx/export_to_onnx.py.
+# For the int8 model use siamban_backbone_int8.onnx / siamban_head_int8.onnx.
+backbone_weights = "siamban_backbone_int8.onnx"
+head_weights = "siamban_head_int8.onnx"
