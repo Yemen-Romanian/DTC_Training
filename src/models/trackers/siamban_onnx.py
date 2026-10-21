@@ -17,15 +17,25 @@ class TrackerSiamBANOnnx(TrackerSiamBAN):
     """
 
     def __init__(self, backbone_path: str | Path = None, head_path: str | Path = None,
-                 providers: list[str] = None):
+                 providers: list[str] = None, threads: int = 0, allow_spinning: bool = True):
+        """
+        threads: intra-op threads per session; 0 lets ONNX Runtime pick (one per physical core).
+        allow_spinning: whether idle worker threads busy-wait for the next op. Spinning lowers
+            latency on dedicated cores but burns CPU that the rest of the tracking loop (crop
+            extraction, video decoding) may need; on small devices turning it off can be faster.
+        """
         # Skips TrackerSiamBAN.__init__ on purpose: there is no torch model to move or eval.
         backbone_path = backbone_path or Paths.model_weights_dir() / "siamban_backbone.onnx"
         head_path = head_path or Paths.model_weights_dir() / "siamban_head.onnx"
         providers = providers or ['CPUExecutionProvider']
         self.device = 'cpu'
 
-        self.backbone_session = ort.InferenceSession(str(backbone_path), providers=providers)
-        self.head_session = ort.InferenceSession(str(head_path), providers=providers)
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = threads
+        options.add_session_config_entry('session.intra_op.allow_spinning', '1' if allow_spinning else '0')
+
+        self.backbone_session = ort.InferenceSession(str(backbone_path), options, providers=providers)
+        self.head_session = ort.InferenceSession(str(head_path), options, providers=providers)
 
         self.window = self._cosine_window()
 

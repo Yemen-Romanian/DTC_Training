@@ -73,9 +73,12 @@ def create_tracker(model_config: dict, state_dict: str | dict = None, device: st
     elif model_id == 'siamban_onnx':
         # Imported here so onnxruntime stays optional for training and the torch trackers.
         from models.trackers.siamban_onnx import TrackerSiamBANOnnx
+        params = model_config.get('params', {})
         tracker = TrackerSiamBANOnnx(
             resolve_weights_path(model_config.get('backbone_weights', 'siamban_backbone.onnx')),
             resolve_weights_path(model_config.get('head_weights', 'siamban_head.onnx')),
+            threads=params.get('threads', 0),
+            allow_spinning=params.get('allow_spinning', True),
         )
 
     elif model_id == 'nano':

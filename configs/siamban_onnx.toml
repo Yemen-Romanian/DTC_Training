@@ -4,3 +4,7 @@ id = "siamban_onnx"
 # For the int8 model use siamban_backbone_int8.onnx / siamban_head_int8.onnx.
 backbone_weights = "siamban_backbone_int8.onnx"
 head_weights = "siamban_head_int8.onnx"
+[params]
+    # Per machine; find the best values with src/evaluation/benchmark_onnx_threads.py.
+    threads = 0              # 0 = ONNX Runtime default (one per physical core)
+    allow_spinning = true    # idle threads busy-wait between ops
