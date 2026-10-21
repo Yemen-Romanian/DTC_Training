@@ -2,11 +2,15 @@ version = 1
 revision = 3
 requires-python = "==3.12.*"
 resolution-markers = [
+    "sys_platform == 'win32'",
+    "platform_machine == 'x86_64' and sys_platform == 'linux'",
     "sys_platform == 'darwin'",
     "platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "sys_platform == 'win32'",
-    "sys_platform == 'emscripten'",
-    "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32')",
+    "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')",
+]
+required-markers = [
+    "platform_machine == 'AMD64' and sys_platform == 'win32'",
+    "platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
 
 [[package]]
@@ -415,8 +419,10 @@ dependencies = [
     { name = "pyyaml" },
     { name = "requests" },
     { name = "tensorboard" },
-    { name = "torch" },
-    { name = "torchvision" },
+    { name = "torch", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and sys_platform != 'win32')" },
+    { name = "torch", version = "2.5.1+cu118", source = { registry = "https://download.pytorch.org/whl/cu118" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or sys_platform == 'win32'" },
+    { name = "torchvision", version = "0.20.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and sys_platform != 'win32')" },
+    { name = "torchvision", version = "0.20.1+cu118", source = { registry = "https://download.pytorch.org/whl/cu118" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or sys_platform == 'win32'" },
     { name = "tqdm" },
     { name = "ultralytics" },
 ]
@@ -440,8 +446,10 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6" },
     { name = "requests", specifier = ">=2.32" },
     { name = "tensorboard", specifier = ">=2.20" },
-    { name = "torch", specifier = "==2.5.1", index = "https://download.pytorch.org/whl/cu118" },
-    { name = "torchvision", specifier = "==0.20.1", index = "https://download.pytorch.org/whl/cu118" },
+    { name = "torch", marker = "(platform_machine != 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and sys_platform != 'win32')", specifier = "==2.5.1" },
+    { name = "torch", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or sys_platform == 'win32'", specifier = "==2.5.1", index = "https://download.pytorch.org/whl/cu118" },
+    { name = "torchvision", marker = "(platform_machine != 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and sys_platform != 'win32')", specifier = "==0.20.1" },
+    { name = "torchvision", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or sys_platform == 'win32'", specifier = "==0.20.1", index = "https://download.pytorch.org/whl/cu118" },
     { name = "tqdm", specifier = ">=4.67" },
     { name = "ultralytics", specifier = ">=8.3" },
 ]
@@ -2017,27 +2025,55 @@ wheels = [
 
 [[package]]
 name = "torch"
-version = "2.5.1+cu118"
-source = { registry = "https://download.pytorch.org/whl/cu118" }
+version = "2.5.1"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "sys_platform == 'darwin'",
+    "platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')",
+]
 dependencies = [
     { name = "filelock" },
     { name = "fsspec" },
     { name = "jinja2" },
     { name = "networkx" },
-    { name = "nvidia-cublas-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cuda-cupti-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cuda-nvrtc-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cuda-runtime-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cudnn-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cufft-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-curand-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cusolver-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cusparse-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-nccl-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-nvtx-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "setuptools" },
     { name = "sympy" },
-    { name = "triton", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "typing-extensions" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8b/5c/36c114d120bfe10f9323ed35061bc5878cc74f3f594003854b0ea298942f/torch-2.5.1-cp312-cp312-manylinux1_x86_64.whl", hash = "sha256:ed231a4b3a5952177fafb661213d690a72caaad97d5824dd4fc17ab9e15cec03", size = 906389343, upload-time = "2024-10-29T17:37:06.758Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/69/d8ada8b6e0a4257556d5b4ddeb4345ea8eeaaef3c98b60d1cca197c7ad8e/torch-2.5.1-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:3f4b7f10a247e0dcd7ea97dc2d3bfbfc90302ed36d7f3952b0008d0df264e697", size = 91811673, upload-time = "2024-10-29T17:32:42.789Z" },
+    { url = "https://files.pythonhosted.org/packages/57/6c/bf52ff061da33deb9f94f4121fde7ff3058812cb7d2036c97bc167793bd1/torch-2.5.1-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:8c712df61101964eb11910a846514011f0b6f5920c55dbf567bff8a34163d5b1", size = 63858109, upload-time = "2024-10-29T17:36:21.973Z" },
+]
+
+[[package]]
+name = "torch"
+version = "2.5.1+cu118"
+source = { registry = "https://download.pytorch.org/whl/cu118" }
+resolution-markers = [
+    "sys_platform == 'win32'",
+    "platform_machine == 'x86_64' and sys_platform == 'linux'",
+]
+dependencies = [
+    { name = "filelock" },
+    { name = "fsspec" },
+    { name = "jinja2" },
+    { name = "networkx" },
+    { name = "nvidia-cublas-cu11", marker = "sys_platform != 'win32'" },
+    { name = "nvidia-cuda-cupti-cu11", marker = "sys_platform != 'win32'" },
+    { name = "nvidia-cuda-nvrtc-cu11", marker = "sys_platform != 'win32'" },
+    { name = "nvidia-cuda-runtime-cu11", marker = "sys_platform != 'win32'" },
+    { name = "nvidia-cudnn-cu11", marker = "sys_platform != 'win32'" },
+    { name = "nvidia-cufft-cu11", marker = "sys_platform != 'win32'" },
+    { name = "nvidia-curand-cu11", marker = "sys_platform != 'win32'" },
+    { name = "nvidia-cusolver-cu11", marker = "sys_platform != 'win32'" },
+    { name = "nvidia-cusparse-cu11", marker = "sys_platform != 'win32'" },
+    { name = "nvidia-nccl-cu11", marker = "sys_platform != 'win32'" },
+    { name = "nvidia-nvtx-cu11", marker = "sys_platform != 'win32'" },
+    { name = "setuptools" },
+    { name = "sympy" },
+    { name = "triton", marker = "sys_platform != 'win32'" },
     { name = "typing-extensions" },
 ]
 wheels = [
@@ -2047,12 +2083,36 @@ wheels = [
 
 [[package]]
 name = "torchvision"
-version = "0.20.1+cu118"
-source = { registry = "https://download.pytorch.org/whl/cu118" }
+version = "0.20.1"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "sys_platform == 'darwin'",
+    "platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')",
+]
 dependencies = [
     { name = "numpy" },
     { name = "pillow" },
-    { name = "torch" },
+    { name = "torch", version = "2.5.1", source = { registry = "https://pypi.org/simple" } },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c5/eb/4ba19616378f2bc085999432fded2b7dfdbdccc6dd0fc293203452508100/torchvision-0.20.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:1a31256ff945d64f006bb306813a7c95a531fe16bfb2535c837dd4c104533d7a", size = 1787553, upload-time = "2024-10-29T17:40:50.63Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/75/00a852275ade58d3dc474530f7a7b6bc999a817148f0eb59d4fde12eb955/torchvision-0.20.1-cp312-cp312-manylinux1_x86_64.whl", hash = "sha256:17cd78adddf81dac57d7dccc9277a4d686425b1c55715f308769770cb26cad5c", size = 7240323, upload-time = "2024-10-29T17:40:44.951Z" },
+    { url = "https://files.pythonhosted.org/packages/af/f0/ca1445406eb12cbeb7a41fc833a1941ede78e7c55621198b83ecd7bcfd0f/torchvision-0.20.1-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:9f853ba4497ac4691815ad41b523ee23cf5ba4f87b1ce869d704052e233ca8b7", size = 14266936, upload-time = "2024-10-29T17:40:31.335Z" },
+]
+
+[[package]]
+name = "torchvision"
+version = "0.20.1+cu118"
+source = { registry = "https://download.pytorch.org/whl/cu118" }
+resolution-markers = [
+    "sys_platform == 'win32'",
+    "platform_machine == 'x86_64' and sys_platform == 'linux'",
+]
+dependencies = [
+    { name = "numpy" },
+    { name = "pillow" },
+    { name = "torch", version = "2.5.1+cu118", source = { registry = "https://download.pytorch.org/whl/cu118" } },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cu118/torchvision-0.20.1%2Bcu118-cp312-cp312-linux_x86_64.whl", hash = "sha256:3f42a6f5919f4e6c848c858411121a46a1d718e6c3db86f467daf6cf192712f8", upload-time = "2024-10-29T23:14:30Z" },
@@ -2152,8 +2212,10 @@ dependencies = [
     { name = "psutil" },
     { name = "pyyaml" },
     { name = "requests" },
-    { name = "torch" },
-    { name = "torchvision" },
+    { name = "torch", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and sys_platform != 'win32')" },
+    { name = "torch", version = "2.5.1+cu118", source = { registry = "https://download.pytorch.org/whl/cu118" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or sys_platform == 'win32'" },
+    { name = "torchvision", version = "0.20.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and sys_platform != 'win32')" },
+    { name = "torchvision", version = "0.20.1+cu118", source = { registry = "https://download.pytorch.org/whl/cu118" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or sys_platform == 'win32'" },
     { name = "ultralytics-platform" },
     { name = "ultralytics-thop" },
 ]
@@ -2180,7 +2242,8 @@ version = "2.2.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
-    { name = "torch" },
+    { name = "torch", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and sys_platform != 'win32')" },
+    { name = "torch", version = "2.5.1+cu118", source = { registry = "https://download.pytorch.org/whl/cu118" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f9/6f/f7dd1959a3f0d3d7417800f6c54112a0bdc9f0529470bb0558c326cd19f3/ultralytics_thop-2.2.3.tar.gz", hash = "sha256:141cea7d1af7fda04b135b5070d19d84f2272c76c5401de9e47581c23e7c5c60", size = 39816, upload-time = "2026-10-19T20:36:33.461Z" }
 wheels = [

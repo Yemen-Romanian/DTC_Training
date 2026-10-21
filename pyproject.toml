@@ -33,12 +33,20 @@ dev = [
 # src/ is a flat set of top-level modules (datasets, models, utils, evaluation),
 # not an installable package, so uv only manages the environment.
 package = false
+# Fail at lock time if any package lacks a wheel for these machines
+# (Windows dev PC, Raspberry Pi 5).
+required-environments = [
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+    "sys_platform == 'linux' and platform_machine == 'aarch64'",
+]
 
 [[tool.uv.index]]
 name = "pytorch-cu118"
 url = "https://download.pytorch.org/whl/cu118"
 explicit = true
 
+# CUDA builds exist only for Windows and x86_64 Linux; elsewhere (e.g. Raspberry Pi,
+# aarch64) torch falls back to the CPU build from PyPI.
 [tool.uv.sources]
-torch = { index = "pytorch-cu118" }
-torchvision = { index = "pytorch-cu118" }
+torch = { index = "pytorch-cu118", marker = "sys_platform == 'win32' or (sys_platform == 'linux' and platform_machine == 'x86_64')" }
+torchvision = { index = "pytorch-cu118", marker = "sys_platform == 'win32' or (sys_platform == 'linux' and platform_machine == 'x86_64')" }
