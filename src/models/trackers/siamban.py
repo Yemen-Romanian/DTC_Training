@@ -200,7 +200,10 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
         self.device = device
         self.model.to(device)
         self.model.eval()
+        self.window = self._cosine_window()
 
+    @classmethod
+    def _cosine_window(cls) -> np.ndarray:
         # Normalized by max, not sum. The score this is blended into is a softmax
         # probability peaking near 1.0, so the window has to peak at 1.0 too. Dividing
         # by the sum (as TrackerSiamFC does) drops the peak to 1/64, which made the
@@ -208,9 +211,9 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
         # spatial prior was ~250x weaker than WINDOW_INFLUENCE implies, i.e. inert.
         # The sum form is correct in TrackerSiamFC only because it normalizes its
         # response map to sum=1 first, putting both on the same scale.
-        hann = np.hanning(self.RESPONSE_SIZE)
-        self.window = np.outer(hann, hann)
-        self.window /= self.window.max()
+        hann = np.hanning(cls.RESPONSE_SIZE)
+        window = np.outer(hann, hann)
+        return window / window.max()
 
     def initialize(self, image: np.ndarray, bbox):
         # bbox: [x, y, w, h]
@@ -221,25 +224,19 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
 
         avg_chans = mean_channels(image)
         z_crop = get_subwindow(image, self.pos, self.EXEMPLAR_SIZE, round(self.s_z), avg_chans)
-        z_tensor = torch.from_numpy(z_crop).permute(2, 0, 1).float().unsqueeze(0).to(self.device) / 255.0
-
-        with torch.no_grad():
-            self.exemplar_features = self.model.extract_features(z_tensor)
+        self.exemplar_features = self._embed_exemplar(z_crop)
 
     def track(self, image: np.ndarray) -> SingleObjectTrackResult:
         avg_chans = mean_channels(image)
         x_crop = get_subwindow(image, self.pos, self.SEARCH_SIZE, round(self.s_x), avg_chans)
-        x_tensor = torch.from_numpy(x_crop).permute(2, 0, 1).float().unsqueeze(0).to(self.device) / 255.0
-
-        with torch.no_grad():
-            x_feat = self.model.extract_features(x_tensor)
-            cls, reg = self.model.head(self.exemplar_features, x_feat)
+        cls, reg = self._score_search(x_crop)
 
         # Foreground score map: softmax over the 2-class dimension, take foreground score
-        score = torch.softmax(cls[0], dim=0)[1].cpu().numpy()  # [17, 17]
-        confidence = self._calculate_confidence(cls.cpu().numpy())
+        cls_exp = np.exp(cls[0] - cls[0].max(axis=0))
+        score = cls_exp[1] / cls_exp.sum(axis=0)  # [17, 17]
+        confidence = self._calculate_confidence(cls)
 
-        reg_map = reg[0].cpu().numpy()  # [4, 17, 17] — (dl, dt, dr, db) per cell
+        reg_map = reg[0]  # [4, 17, 17] — (dl, dt, dr, db) per cell
 
         # Two priors are applied to the classification score before the argmax, in this
         # order: the scale/ratio penalty (per-cell, depends on what box that cell
@@ -297,6 +294,21 @@ class TrackerSiamBAN(SingleObjectTrackerBase):
     def to_device(self, device: str):
         self.device = device
         self.model.to(device)
+
+    def _to_tensor(self, crop: np.ndarray) -> torch.Tensor:
+        return torch.from_numpy(crop).permute(2, 0, 1).float().unsqueeze(0).to(self.device) / 255.0
+
+    def _embed_exemplar(self, z_crop: np.ndarray):
+        """Exemplar features, kept opaque to track() so subclasses can hold any representation."""
+        with torch.no_grad():
+            return self.model.extract_features(self._to_tensor(z_crop))
+
+    def _score_search(self, x_crop: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Run the network on a search crop; returns (cls [1, 2, 17, 17], reg [1, 4, 17, 17])."""
+        with torch.no_grad():
+            x_feat = self.model.extract_features(self._to_tensor(x_crop))
+            cls, reg = self.model.head(self.exemplar_features, x_feat)
+        return cls.cpu().numpy(), reg.cpu().numpy()
 
     def _size_penalty(self, reg_map: np.ndarray) -> np.ndarray:
         """Down-weight cells whose predicted box disagrees in size or aspect with the target.

@@ -9,6 +9,7 @@ __pycache__
 configs/*
 !configs/example_training_config.toml
 !configs/siamban.toml
+!configs/siamban_onnx.toml
 !configs/siamfc.toml
 !configs/vit.toml
 !configs/nano.toml

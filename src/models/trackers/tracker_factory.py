@@ -38,7 +38,11 @@ def resolve_state_dict(model_config, state_dict=None):
     weights = model_config.get('weights') or model_config.get('params', {}).get('weights')
     if weights is None:
         return None
+    return str(resolve_weights_path(weights))
 
+
+def resolve_weights_path(weights: str) -> Path:
+    """An absolute path is used as is, a bare file name is looked up in output/model_weights."""
     weights_path = Path(weights)
     if not weights_path.is_absolute():
         weights_path = Paths.model_weights_dir() / weights_path
@@ -48,7 +52,7 @@ def resolve_state_dict(model_config, state_dict=None):
         )
 
     logger.info(f"Loading tracker weights from {weights_path}")
-    return str(weights_path)
+    return weights_path
 
 
 def create_tracker(model_config: dict, state_dict: str | dict = None, device: str = None):
@@ -65,6 +69,17 @@ def create_tracker(model_config: dict, state_dict: str | dict = None, device: st
         model = SiamBANNet.from_config(model_config)
         _load_weights(model, state_dict, device)
         tracker = TrackerSiamBAN(model, device)
+
+    elif model_id == 'siamban_onnx':
+        # Imported here so onnxruntime stays optional for training and the torch trackers.
+        from models.trackers.siamban_onnx import TrackerSiamBANOnnx
+        params = model_config.get('params', {})
+        tracker = TrackerSiamBANOnnx(
+            resolve_weights_path(model_config.get('backbone_weights', 'siamban_backbone.onnx')),
+            resolve_weights_path(model_config.get('head_weights', 'siamban_head.onnx')),
+            threads=params.get('threads', 0),
+            allow_spinning=params.get('allow_spinning', True),
+        )
 
     elif model_id == 'nano':
         tracker = TrackerNano(device=device)
