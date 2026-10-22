@@ -1,4 +1,5 @@
 import argparse
+from decimal import MAX_EMAX
 import cv2
 import numpy as np
 import pandas as pd
@@ -21,6 +22,9 @@ from utils.config import load_config
 TRUE_COLOR = (0, 255, 0)  # Green for ground truth
 FALSE_COLOR = (0, 0, 255)  # Red for predictions
 TEXT_COLOR = (255, 255, 255) # White text
+
+MIN_FRAMES_FOR_OOV = 1
+MAX_FRAMES_FOR_OOV_REDETECT = 10
 
 def main():
     parser = argparse.ArgumentParser(description="Tracking Demo")
@@ -56,26 +60,49 @@ def main():
 
 
 def run_demo_with_gt(video, tracker, tracker_results, debug_mode, gt_rects):
-    current_gt_index = 0
     init_counter = 0
     miss_counter = 0
+    oov_total = 0
+    oov_redetected = 0
+    oov_run = 0            # length of the current run of all-zero GT rows
+    oov_recovery = False   # True while we wait for the tracker to re-detect the object
+    recovery_frames = 0    # frames spent in the current recovery window
     frame_times = collections.deque(maxlen=30)
+
+    gt_by_frame = {idx: np.asarray(rect, dtype=float) for idx, rect in gt_rects}
+
+    first_valid_idx = next((idx for idx, rect in gt_rects if np.any(rect)), None)
+    if first_valid_idx is None:
+        print("Error: ground truth contains only zero rows.")
+        return
+
     cv2.namedWindow("Tracking Demo", cv2.WND_PROP_FULLSCREEN)
     cv2.setWindowProperty("Tracking Demo", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
     for frame_idx, frame in enumerate(video.source):
+        # Skip all leading frames whose GT is all zeros
+        if frame_idx < first_valid_idx:
+            continue
+
         gt_frame = cv2.cvtColor(frame.copy(), cv2.COLOR_RGB2BGR)
         results_frame = cv2.cvtColor(frame.copy(), cv2.COLOR_RGB2BGR)
 
-        if frame_idx == 0 and not tracker_results:
-            tracker.initialize(frame, gt_rects[0][1])
-            current_gt_index += 1
+        gt_rect = gt_by_frame.get(frame_idx, np.zeros((4,)))
 
-        if current_gt_index < len(gt_rects) and gt_rects[current_gt_index][0] == frame_idx:
-            gt_rect = gt_rects[current_gt_index][1]
-            current_gt_index += 1
+        if frame_idx == first_valid_idx and not tracker_results:
+            tracker.initialize(frame, gt_rect)
+
+        # OOV detection and OOV end -> start of the recovery window
+        if not gt_rect.any():
+            if oov_run == 0:
+                oov_total += 1
+            oov_run += 1
         else:
-            gt_rect = np.zeros((4, ))  # No ground truth for this frame
+            if oov_run >= MIN_FRAMES_FOR_OOV:   # a real OOV just ended
+                oov_recovery = True
+                recovery_frames = 0
+                miss_counter = 0                # misses accumulated during OOV don't count
+            oov_run = 0
 
         gt_frame = draw_bounding_box(gt_frame, gt_rect, color=TRUE_COLOR)
         if tracker_results:
@@ -98,7 +125,20 @@ def run_demo_with_gt(video, tracker, tracker_results, debug_mode, gt_rects):
         bbox_gt = convert_gt_for_evaluation(frame_idx + 1, gt_rect)
         tp, fp, fn, metrics_list = match_boxes(bbox_gt, bbox_pred)
 
-        if fp > 0 or fn > 0:
+        # OOV recovery: give the tracker MAX_FRAMES_FOR_OOV_REDETECT frames to re-detect
+        if oov_recovery:
+            recovery_frames += 1
+            if tp > 0:
+                oov_redetected += 1
+                oov_recovery = False
+            elif recovery_frames >= MAX_FRAMES_FOR_OOV_REDETECT:
+                if gt_rect.any() and not tracker_results:
+                    tracker.initialize(frame, gt_rect)
+                    init_counter += 1
+                    miss_counter = 0
+                    oov_recovery = False
+
+        if (fp > 0 or fn > 0) and gt_rect.any():
             miss_counter += 1
             if miss_counter > 20 and gt_rect.any() and not tracker_results:
                 tracker.initialize(frame, gt_rect)
@@ -116,6 +156,8 @@ def run_demo_with_gt(video, tracker, tracker_results, debug_mode, gt_rects):
         results_frame = draw_metrics_info(results_frame, tp=tp, fp=fp, fn=fn, miss=miss_counter,
             init=init_counter, metrics_list=metrics_list)
         results_frame = draw_confidence_info(results_frame, confidence)
+        results_frame = draw_oov_info(results_frame, oov_total, oov_redetected,
+                                      in_oov=oov_run > 0, recovering=oov_recovery)
 
         if fps is not None:
             results_frame = draw_fps_info(results_frame, fps)
@@ -127,8 +169,10 @@ def run_demo_with_gt(video, tracker, tracker_results, debug_mode, gt_rects):
 
         results_frame = draw_bounding_box(results_frame, bbox_to_draw, color=prediction_color)
 
-        delimiter_image = np.zeros((20, frame.shape[1], 3), dtype=np.uint8)  # A black vertical bar as delimiter
-        frame_to_display = np.vstack([gt_frame, delimiter_image, results_frame])  # Just display the same frame twice for demo
+        #delimiter_image = np.zeros((20, frame.shape[1], 3), dtype=np.uint8)  # A black vertical bar as delimiter
+        #frame_to_display = np.vstack([gt_frame, delimiter_image, results_frame])  # Just display the same frame twice for demo
+        delimiter_image = np.zeros((frame.shape[0], 20, 3), dtype=np.uint8)  # vertical black bar
+        frame_to_display = np.hstack([gt_frame, delimiter_image, results_frame])
         cv2.imshow("Tracking Demo", frame_to_display)
 
         if debug_mode:
@@ -224,7 +268,7 @@ def draw_frame_number(frame, frame_number, relative_position=(0.01, 0.03)):
     return frame
 
 
-def draw_metrics_info(frame, tp, fp, fn, metrics_list, miss=0, init=0, relative_position=(0.15, 0.03)):
+def draw_metrics_info(frame, tp, fp, fn, metrics_list, miss=0, init=0, relative_position=(0.21, 0.03)):
     text_scale = 1.0
     text_scale = max(0.5, min(frame.shape[1], frame.shape[0]) / 1000 * text_scale)
     position = (int(frame.shape[1] * relative_position[0]), int(frame.shape[0] * relative_position[1]))
@@ -245,6 +289,17 @@ def draw_confidence_info(frame, confidence, relative_position=(0.01, 0.08), obje
     if confidence < object_loss_threshold:  # Threshold for low confidence, can be adjusted
         frame = draw_object_loss_text(frame, relative_position=(0.20, relative_position[1]))
     return frame
+
+def draw_oov_info(frame, oov_total, oov_redetected, in_oov=False, recovering=False,
+                  relative_position=(0.01, 0.18)):
+    text_scale = max(0.5, min(frame.shape[1], frame.shape[0]) / 1000)
+    position = (int(frame.shape[1] * relative_position[0]), int(frame.shape[0] * relative_position[1]))
+    text = f"OOV: {oov_total} (redetected: {oov_redetected})"
+    if in_oov:
+        text += " [OUT OF VIEW]"
+    elif recovering:
+        text += " [RE-DETECTING]"
+    return cv2.putText(frame, text, position, cv2.FONT_HERSHEY_SIMPLEX, text_scale, TEXT_COLOR, 2)
 
 def draw_object_loss_text(frame, relative_position=(0.30, 0.03)):
     text_scale = 1.0

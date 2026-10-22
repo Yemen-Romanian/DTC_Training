@@ -1,6 +1,6 @@
 pushd src
-SET DATASET_ROOT=
-SET CLIP=KBrEEi7vJX
+SET DATASET_ROOT="..\\..\\TestTrackingDataset\\real_videos"
+SET CLIP=1
 SET VIDEO_SOURCE=%DATASET_ROOT%\\%CLIP%.mp4
 SET GT_PATH=%DATASET_ROOT%\\%CLIP%_groundtruth.txt
 SET MODEL_CONFIG=siamban.toml
