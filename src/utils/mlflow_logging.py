@@ -68,9 +68,14 @@ def save_training_run(mlflower, config, model, val_metrics: dict, test_metrics: 
     model_config = config.get_model_config()
     experiment_name = config.get_param("experiment_name") or f"{model_config['id']}_training"
 
+    head_config = model_config.get('head', {})
+    head_type = head_config.get('type', 'baseline')
     params = {
         'model_id': model_config['id'],
         'backbone': model_config['backbone']['type'],
+        'head_type': head_type,
+        # Same default as SiamBANNet, so the logged depth is the one the tower was built with.
+        'tower_depth': head_config.get('tower_depth', 2) if head_type == 'tower' else '',
         'batch_size': config.get_training_param('batch_size'),
         'lr': config.get_training_param('lr'),
         'epochs_num': config.get_training_param('epochs_num'),
