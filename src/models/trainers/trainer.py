@@ -81,7 +81,9 @@ class Trainer:
 
         self.nn_module = model.get_module()
         lr = config.get_training_param('lr')
-        self.optimizer = optim.Adam(self.nn_module.parameters(), lr=lr, weight_decay=1e-4)
+        # AdamW, not Adam: Adam's coupled weight decay drove channels with no task gradient to
+        # ~0 (dead channels in the SiamBAN checkpoints, NEXT_EXPERIMENTS.md E6).
+        self.optimizer = optim.AdamW(self.nn_module.parameters(), lr=lr, weight_decay=1e-4)
         self.lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=5)
 
         model_id = config.get_model_config()['id']
