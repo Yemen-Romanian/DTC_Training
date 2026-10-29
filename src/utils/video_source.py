@@ -27,19 +27,24 @@ class VideoSource:
     def __next__(self):
         if self.current_frame_index >= len(self.frames):
             raise StopIteration
-        frame_path = self.frames[self.current_frame_index]
-        frame = cv2.imread(str(frame_path))
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame = self._read_frame(self.frames[self.current_frame_index])
         self.current_frame_index += 1
         return frame
-        
+
     def __getitem__(self, index):
         if index >= len(self.frames):
             raise IndexError(f"Invalid frame index {index} for video with length {len(self.frames)}")
-        frame_path = self.frames[index]
+        return self._read_frame(self.frames[index])
+
+    @staticmethod
+    def _read_frame(frame_path):
+        # imread signals every failure, including running out of memory mid-decode, by
+        # returning None rather than raising.
         frame = cv2.imread(str(frame_path))
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        return frame
+        if frame is None:
+            raise IOError(f"cv2.imread failed to read frame {frame_path} "
+                          f"(missing, corrupt, or the process is out of memory)")
+        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
     def _extract_video(self):
         video_name = self.source.stem

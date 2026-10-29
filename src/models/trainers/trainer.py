@@ -260,10 +260,9 @@ class Trainer:
 
     def _run_evaluation(self, epoch, videos, prefix) -> dict:
         self.logger.info(f"Evaluating on {prefix} set...")
-        # Uncapped (os.cpu_count() - 1) is fine only because the train loader is not
-        # persistent, so its pool is already torn down by the time this runs. Cap this to
-        # EVAL_WORKERS if persistent_workers is ever enabled on the train loader.
-        results = evaluate_tracker(self.model_config, videos, state_dict=self.nn_module.state_dict())
+        # Capped because the persistent train pool is still resident here; see EVAL_WORKERS.
+        results = evaluate_tracker(self.model_config, videos, state_dict=self.nn_module.state_dict(),
+                                   max_workers=EVAL_WORKERS)
         avg_results = calculate_average_metrics(results)
 
         for metric_name, metric_value in avg_results.items():
