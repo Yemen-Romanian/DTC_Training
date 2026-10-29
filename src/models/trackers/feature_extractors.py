@@ -1,6 +1,9 @@
+from collections import OrderedDict
+
 import torch
 import torch.nn as nn
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
+from torchvision.ops import FeaturePyramidNetwork
 from torchvision import transforms
 
 class AlexNetFeatureExtractor(nn.Module):
@@ -16,26 +19,26 @@ class AlexNetFeatureExtractor(nn.Module):
             nn.BatchNorm2d(96),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2),
-            
+
             nn.Conv2d(in_channels=96, out_channels=256, kernel_size=5, stride=1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2),
-            
+
             nn.Conv2d(in_channels=256, out_channels=192, kernel_size=3, stride=1),
             nn.BatchNorm2d(192),
             nn.ReLU(inplace=True),
-            
+
             nn.Conv2d(in_channels=192, out_channels=192, kernel_size=3, stride=1),
             nn.BatchNorm2d(192),
             nn.ReLU(),
-            
+
             nn.Conv2d(in_channels=192, out_channels=128, kernel_size=3, stride=1),
             nn.BatchNorm2d(128)
         )
     def forward(self, x):
         return self.feature_extractor(x)
-    
+
 
 class MobileNetV3FeatureExtractor(nn.Module):
     def __init__(self, device='cpu', freeze_weights=True, pretrained=True):
@@ -226,3 +229,118 @@ class MobileNetV3MultiLayerFeatureExtractor(nn.Module):
             branch = neck(activation) * weights[index]
             fused = branch if fused is None else fused + branch
         return fused
+
+
+class MobileNetV3FPNFeatureExtractor(nn.Module):
+    """MobileNetV3-Small tapped at several depths, merged top-down by a feature pyramid.
+
+    The default taps are C3, C4 and C5 - the last layer before each stride change:
+    features[:4] (stride 8, 24 ch), features[:9] (stride 16, 48 ch), features[:12]
+    (stride 32, 96 ch). features[12], the 1x1 expansion to 576 channels, is left out: it is
+    sized for the ImageNet classifier.
+
+    Unlike MobileNetV3MultiLayerFeatureExtractor, the branches do not compete through one
+    scalar weight each. The FPN adds every deeper level, upsampled, into the 1x1-projected level
+    above it, then smooths each sum with a 3x3 conv:
+
+        P3 = conv3x3(lat(C3) + up(lat(C4) + up(lat(C5))))
+
+    Only P3 is returned. It sits at true stride 8 - 16x16 for a 127px exemplar, 32x32 for a 255px
+    search crop - so BANHead and the 17x17 targets are unaffected, and it carries the deep
+    semantics at every position instead of letting the network turn the fine branch down.
+
+    `dilated=True` builds the backbone with torchvision's dilated last stage (stride 1,
+    dilation 2), which keeps C5 at stride 16: 8x8 on the exemplar instead of a 4x4 map that is
+    almost all padding. The pretrained weights load unchanged, since dilation adds no parameters.
+
+    `norm_layer` is passed to the FPN's lateral and output convs (torchvision's default: none).
+    Normalizing keeps the lateral and top-down branches in comparable ranges, which matters for
+    int8: each FPN sum is quantized with a single scale, so an unbounded branch would crush the
+    other one's precision.
+    """
+
+    TARGET_STRIDE = 8
+
+    def __init__(self, taps=(4, 9, 12), out_channels=48, freeze_weights=True, pretrained=True,
+                 dilated=False, norm_layer=None):
+        super().__init__()
+
+        self.taps = tuple(taps)
+        if len(self.taps) < 2:
+            raise ValueError(f"Expected at least two taps, got {self.taps}")
+        if list(self.taps) != sorted(set(self.taps)):
+            raise ValueError(f"Taps must be strictly increasing and unique, got {self.taps}")
+
+        self.stride = self.TARGET_STRIDE
+        self.out_channels = out_channels
+        self.freeze_weights = freeze_weights
+
+        # Local, not an attribute, for the same checkpoint-size reason as the multi-layer
+        # extractor: only the used slices are registered.
+        mnet = mobilenet_v3_small(
+            weights=MobileNet_V3_Small_Weights.IMAGENET1K_V1 if pretrained else None,
+            dilated=dilated,
+        )
+        bounds = (0,) + self.taps
+        self.stages = nn.ModuleList([
+            nn.Sequential(*mnet.features[start:end])
+            for start, end in zip(bounds[:-1], bounds[1:])
+        ])
+
+        if freeze_weights:
+            for param in self.stages.parameters():
+                param.requires_grad = False
+
+        self.preprocess = transforms.Compose([
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+
+        self.fpn = FeaturePyramidNetwork(in_channels_list=self._probe_channels(),
+                                         out_channels=out_channels, norm_layer=norm_layer)
+
+    @torch.no_grad()
+    def _probe_channels(self, probe_size: int = 255) -> list:
+        """Measure each tap's width with one dummy forward, and check the finest one is stride 8.
+
+        Stages are forced to eval first so the dummy batch does not overwrite the pretrained
+        BatchNorm running statistics.
+        """
+        was_training = self.stages.training
+        self.stages.eval()
+        try:
+            activation = torch.zeros(1, 3, probe_size, probe_size)
+            channels, sizes = [], []
+            for stage in self.stages:
+                activation = stage(activation)
+                channels.append(activation.shape[1])
+                sizes.append(activation.shape[-1])
+        finally:
+            self.stages.train(was_training)
+
+        # P3 inherits the grid of the shallowest tap, and everything downstream assumes stride 8.
+        expected = -(-probe_size // self.TARGET_STRIDE)  # ceil division
+        if sizes[0] != expected:
+            raise ValueError(
+                f"Shallowest tap features[:{self.taps[0]}] produces a {sizes[0]}x{sizes[0]} grid for "
+                f"a {probe_size}px input, but P3 must be stride {self.TARGET_STRIDE} "
+                f"({expected}x{expected}) to keep the 17x17 correlation response."
+            )
+        return channels
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if self.freeze_weights:
+            # Only the backbone stages are frozen; the FPN always trains.
+            for module in self.stages.modules():
+                if isinstance(module, nn.BatchNorm2d):
+                    module.eval()
+        return self
+
+    def forward(self, x):
+        activation = self.preprocess(x)
+        levels = OrderedDict()
+        for index, stage in enumerate(self.stages):
+            activation = stage(activation)
+            levels[f"c{index}"] = activation
+        # The FPN returns one map per level under the input keys; "c0" is P3, the finest.
+        return self.fpn(levels)["c0"]

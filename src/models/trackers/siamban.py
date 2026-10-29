@@ -14,6 +14,7 @@ from models.trackers.feature_extractors import (
     AlexNetFeatureExtractor,
     MobileNetV3FeatureExtractor,
     MobileNetV3MultiLayerFeatureExtractor,
+    MobileNetV3FPNFeatureExtractor,
 )
 from datasets.mixed_dataset import MixedDataset
 from datasets.siamban_dataset import SiamBANDataset
@@ -136,6 +137,21 @@ class SiamBANNet(nn.Module):
                 pretrained=pretrained
             )
             logger.info(f"Backbone taps: {taps} -> {backbone.out_channels} fused channels")
+        elif backbone_type == 'MobileNetV3FPN':
+            taps = tuple(backbone_config.get('taps', (4, 9, 12)))
+            dilated = backbone_config.get('dilated', False)
+            backbone = MobileNetV3FPNFeatureExtractor(
+                taps=taps,
+                out_channels=backbone_config.get('out_channels', 48),
+                freeze_weights=freeze_backbone,
+                pretrained=pretrained,
+                dilated=dilated,
+                # BatchNorm in the FPN keeps its summed branches in comparable ranges for int8;
+                # it is folded into the convs at ONNX export.
+                norm_layer=nn.BatchNorm2d
+            )
+            logger.info(f"Backbone FPN taps: {taps} (dilated={dilated}) -> P3 with "
+                        f"{backbone.out_channels} channels")
         else:
             raise ValueError(f"Unsupported backbone type: {backbone_type}")
 
