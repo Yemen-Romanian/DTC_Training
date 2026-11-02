@@ -81,7 +81,9 @@ class Trainer:
 
         self.nn_module = model.get_module()
         lr = config.get_training_param('lr')
-        self.optimizer = optim.Adam(self.nn_module.parameters(), lr=lr, weight_decay=1e-4)
+        # AdamW, not Adam: Adam's coupled weight decay drove channels with no task gradient to
+        # ~0 (dead channels in the SiamBAN checkpoints, NEXT_EXPERIMENTS.md E6).
+        self.optimizer = optim.AdamW(self.nn_module.parameters(), lr=lr, weight_decay=1e-4)
         self.lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=5)
 
         model_id = config.get_model_config()['id']
@@ -258,10 +260,9 @@ class Trainer:
 
     def _run_evaluation(self, epoch, videos, prefix) -> dict:
         self.logger.info(f"Evaluating on {prefix} set...")
-        # Uncapped (os.cpu_count() - 1) is fine only because the train loader is not
-        # persistent, so its pool is already torn down by the time this runs. Cap this to
-        # EVAL_WORKERS if persistent_workers is ever enabled on the train loader.
-        results = evaluate_tracker(self.model_config, videos, state_dict=self.nn_module.state_dict())
+        # Capped because the persistent train pool is still resident here; see EVAL_WORKERS.
+        results = evaluate_tracker(self.model_config, videos, state_dict=self.nn_module.state_dict(),
+                                   max_workers=EVAL_WORKERS)
         avg_results = calculate_average_metrics(results)
 
         for metric_name, metric_value in avg_results.items():

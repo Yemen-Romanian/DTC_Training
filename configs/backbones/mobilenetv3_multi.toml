@@ -1,0 +1,14 @@
+# MobileNetV3-Small with two taps fused by learned weights.
+# Tried in siamban_training_20260818_103958 and it did NOT beat the single-layer baseline on the
+# test set. The shallow features[:4] branch was used but never led: its fusion weight fell to ~0.28
+# in the first epoch and finished at 0.271, so the extra true-stride-8 detail was available and the
+# network chose not to lean on it. Reading: feature resolution is probably not the bottleneck. Kept
+# because the code path is tested and works, not because it is recommended.
+# A two-layer run must train from scratch: single-layer weights fail the strict load.
+# Checkpoints depend on these values, and loading is strict: add a new file for a new variant
+# rather than editing one that is in use.
+type = "MobileNetV3Multi"
+taps = [4, 9]
+out_channels = 48
+freeze = false
+pretrained = true

@@ -1,0 +1,10 @@
+# MobileNetV3-Small FPN, taps features[:4]/[:9]/[:12] = C3/C4/C5 = 24/48/96 ch.
+# `dilated` keeps C5 at stride 16.
+# Checkpoints depend on these values, and loading is strict: add a new file for a new variant
+# rather than editing one that is in use.
+type = "MobileNetV3FPN"
+taps = [4, 9, 12]
+dilated = true
+out_channels = 48
+freeze = false
+pretrained = true

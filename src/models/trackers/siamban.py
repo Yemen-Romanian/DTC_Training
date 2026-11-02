@@ -14,7 +14,19 @@ from models.trackers.feature_extractors import (
     AlexNetFeatureExtractor,
     MobileNetV3FeatureExtractor,
     MobileNetV3MultiLayerFeatureExtractor,
+    MobileNetV3FPNFeatureExtractor,
+    MobileNetV4FPNFeatureExtractor,
+    MobileOneFPNFeatureExtractor,
+    EfficientNetLiteFPNFeatureExtractor,
+    TimmFPNFeatureExtractor,
 )
+
+# Fixed timm FPN backbones by config type; any other timm model goes through type = "TimmFPN".
+TIMM_FPN_BACKBONES = {
+    'MobileNetV4FPN': MobileNetV4FPNFeatureExtractor,
+    'MobileOneFPN': MobileOneFPNFeatureExtractor,
+    'EfficientNetLiteFPN': EfficientNetLiteFPNFeatureExtractor,
+}
 from datasets.mixed_dataset import MixedDataset
 from datasets.siamban_dataset import SiamBANDataset
 from datasets.utils.tracking_augmentation_utils import get_subwindow, mean_channels
@@ -51,6 +63,19 @@ def _head_branch(in_ch: int, out_ch: int) -> nn.Sequential:
     )
 
 
+def _tower_head_branch(in_ch: int, out_ch: int, depth: int) -> nn.Sequential:
+    # padding=1 keeps the 17x17 response; unpadded, each layer would cut it by 2 and break the
+    # targets and the tracker's cell-to-pixel mapping.
+    layers = []
+    for _ in range(depth):
+        layers += [nn.Conv2d(in_ch, in_ch, 3, padding=1), nn.BatchNorm2d(in_ch), nn.ReLU(inplace=True)]
+    layers.append(nn.Conv2d(in_ch, out_ch, 1))
+    return nn.Sequential(*layers)
+
+
+HEAD_TYPES = ("baseline", "tower")
+
+
 class BANHead(nn.Module):
     """
     Box Adaptive Network head that performs classification and
@@ -60,10 +85,20 @@ class BANHead(nn.Module):
     For each spatial location on the response map the head predicts:
       - cls: 2-channel foreground/background logits
       - reg: 4-channel distances to the target box edges (dl, dt, dr, db)
+
+    `head_type` picks what follows the correlation in each branch:
+      - "baseline": 1x1 conv + BN + ReLU, 1x1 conv - every response cell is scored on its own.
+      - "tower": `tower_depth` x (3x3 conv + BN + ReLU), 1x1 conv - each cell sees its neighbours.
     """
 
-    def __init__(self, in_channels: int, hidden_channels: int = 256):
+    def __init__(self, in_channels: int, hidden_channels: int = 256, head_type: str = "baseline",
+                 tower_depth: int = 2):
         super().__init__()
+
+        if head_type not in HEAD_TYPES:
+            raise ValueError(f"Unknown head type '{head_type}'. Possible values: {HEAD_TYPES}")
+        if head_type == "tower" and tower_depth < 1:
+            raise ValueError(f"tower_depth must be >= 1, got {tower_depth}")
 
         self.cls_z_proj = nn.Conv2d(in_channels, hidden_channels, 1)
         self.cls_x_proj = nn.Conv2d(in_channels, hidden_channels, 1)
@@ -72,8 +107,14 @@ class BANHead(nn.Module):
 
         self.corr = DepthwiseCorr()
 
-        self.cls_head = _head_branch(hidden_channels, 2)
-        self.reg_head = _head_branch(hidden_channels, 4)
+        # The baseline keeps the original module tree, so its state-dict keys match every
+        # checkpoint trained before the tower existed.
+        if head_type == "tower":
+            self.cls_head = _tower_head_branch(hidden_channels, 2, tower_depth)
+            self.reg_head = _tower_head_branch(hidden_channels, 4, tower_depth)
+        else:
+            self.cls_head = _head_branch(hidden_channels, 2)
+            self.reg_head = _head_branch(hidden_channels, 4)
 
         self._init_weights()
 
@@ -90,7 +131,6 @@ class BANHead(nn.Module):
     def forward(self, z: torch.Tensor, x: torch.Tensor):
         cls_feat = self.corr(self.cls_z_proj(z), self.cls_x_proj(x))
         reg_feat = self.corr(self.reg_z_proj(z), self.reg_x_proj(x))
-
         cls = self.cls_head(cls_feat)
         reg = F.relu(self.reg_head(reg_feat))
 
@@ -98,10 +138,14 @@ class BANHead(nn.Module):
 
 
 class SiamBANNet(nn.Module):
-    def __init__(self, backbone: nn.Module, in_channels: int, hidden_channels: int = 256):
+    def __init__(self, backbone: nn.Module, in_channels: int, hidden_channels: int = 256,
+                 head_config: dict | None = None):
         super().__init__()
+        head_config = head_config or {}
         self.backbone = backbone
-        self.head = BANHead(in_channels, hidden_channels)
+        self.head = BANHead(in_channels, hidden_channels,
+                            head_type=head_config.get('type', 'baseline'),
+                            tower_depth=head_config.get('tower_depth', 2))
 
     def forward(self, z: torch.Tensor, x: torch.Tensor):
         return self.head(self.extract_features(z), self.extract_features(x))
@@ -116,9 +160,13 @@ class SiamBANNet(nn.Module):
         freeze_backbone = backbone_config.get('freeze', False)
         pretrained = backbone_config.get('pretrained', True)
         hidden_channels = model_config.get('params', {}).get('hidden_channels', 256)
+        head_config = model_config.get('head', {})
 
         logger.info(f"Creating SiamBAN model with backbone: {backbone_type}")
         logger.info(f"Backbone weights freeze: {freeze_backbone}")
+        head_type = head_config.get('type', 'baseline')
+        depth_info = f" (tower_depth={head_config.get('tower_depth', 2)})" if head_type == 'tower' else ""
+        logger.info(f"Head type: {head_type}{depth_info}")
 
         if backbone_type == 'AlexNet':
             backbone = AlexNetFeatureExtractor()
@@ -136,12 +184,41 @@ class SiamBANNet(nn.Module):
                 pretrained=pretrained
             )
             logger.info(f"Backbone taps: {taps} -> {backbone.out_channels} fused channels")
+        elif backbone_type == 'MobileNetV3FPN':
+            taps = tuple(backbone_config.get('taps', (4, 9, 12)))
+            dilated = backbone_config.get('dilated', False)
+            backbone = MobileNetV3FPNFeatureExtractor(
+                taps=taps,
+                out_channels=backbone_config.get('out_channels', 48),
+                freeze_weights=freeze_backbone,
+                pretrained=pretrained,
+                dilated=dilated,
+                # BatchNorm in the FPN keeps its summed branches in comparable ranges for int8;
+                # it is folded into the convs at ONNX export.
+                norm_layer=nn.BatchNorm2d
+            )
+            logger.info(f"Backbone FPN taps: {taps} (dilated={dilated}) -> P3 with "
+                        f"{backbone.out_channels} channels")
+        elif backbone_type in TIMM_FPN_BACKBONES or backbone_type == 'TimmFPN':
+            kwargs = dict(out_channels=backbone_config.get('out_channels', 48),
+                          freeze_weights=freeze_backbone,
+                          pretrained=pretrained,
+                          norm_layer=nn.BatchNorm2d)
+            if backbone_type == 'TimmFPN':
+                backbone = TimmFPNFeatureExtractor(
+                    name=backbone_config['name'],
+                    strides=tuple(backbone_config.get('strides', (8, 16, 32))),
+                    **kwargs)
+            else:
+                backbone = TIMM_FPN_BACKBONES[backbone_type](**kwargs)
+            logger.info(f"Backbone timm FPN {backbone.name}: levels {backbone.level_channels} ch "
+                        f"-> P3 with {backbone.out_channels} channels")
         else:
             raise ValueError(f"Unsupported backbone type: {backbone_type}")
 
         # Read from the backbone rather than a lookup table, so the head can never drift out of
         # sync with the width the backbone actually emits.
-        return cls(backbone, backbone.out_channels, hidden_channels)
+        return cls(backbone, backbone.out_channels, hidden_channels, head_config)
 
 
 class TrainableSiamBAN(AbstractTrainable):

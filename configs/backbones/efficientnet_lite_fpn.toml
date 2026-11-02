@@ -1,0 +1,8 @@
+# EfficientNet-Lite0 FPN, C3/C4/C5 = 40/112/320 ch, C5 dilated to stride 16. Not trained yet.
+# Normalizes with mean/std 0.5, read from the timm model config.
+# Checkpoints depend on these values, and loading is strict: add a new file for a new variant
+# rather than editing one that is in use.
+type = "EfficientNetLiteFPN"
+out_channels = 96
+freeze = false
+pretrained = true

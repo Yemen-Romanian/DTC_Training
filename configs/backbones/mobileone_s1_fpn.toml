@@ -1,0 +1,10 @@
+# MobileOne-S1 through the generic timm FPN, C3/C4/C5 = 192/512/1280 ch. Not trained yet.
+# Copy this file for other timm models: `name` is the timm model name, `strides` the levels to tap.
+# Checkpoints depend on these values, and loading is strict: add a new file for a new variant
+# rather than editing one that is in use.
+type = "TimmFPN"
+name = "mobileone_s1.apple_in1k"
+strides = [8, 16, 32]
+out_channels = 96
+freeze = false
+pretrained = true
