@@ -1,3 +1,4 @@
+import argparse
 import time
 import torch
 import numpy as np
@@ -12,6 +13,7 @@ from onnxruntime.quantization.quantize import (
 from datasets.mixed_dataset import MixedDataset
 from utils.paths import Paths
 from models.trackers.tracker_factory import create_tracker
+from utils.config import load_config
 from utils.onnx.calibration_reader import (
     SiamBANBackboneCalibrationReader,
     SiamBANHeadCalibrationReader,
@@ -86,21 +88,17 @@ class HeadWrapper(torch.nn.Module):
         return self.head(z_feat, x_feat)
 
 
-model_config = {
-    'id': 'siamban',
-    'backbone': {
-        'type': 'MobileNetV3',
-        'freeze': True,
-        'pretrained': True
-    },
-    'params': {
-        'device': 'cpu'
-    }
-}
+def export_siamban_to_onnx(model_config_name: str, output_prefix: str, validation_paths: dict):
+    """Export the network in a SiamBAN model config to <output_prefix>_{backbone,head}[_prepr|_int8].onnx.
 
-def export_siamban_to_onnx(checkpoint_name: str, validation_paths: dict):
-    state_dict_path = str(Paths.model_weights_dir() / checkpoint_name)
-    tracker = create_tracker(model_config, state_dict=state_dict_path)
+    Quantization runs on the CPU, and the checkpoint replaces the backbone's weights, so there is
+    no need for a GPU or for downloading pretrained ones.
+    """
+    model_config = load_config(model_config_name)
+    model_config.setdefault('params', {})['device'] = 'cpu'
+    model_config['backbone']['pretrained'] = False
+
+    tracker = create_tracker(model_config)
     model = tracker.model
 
     examplar = torch.randn((1, 3, 127, 127))
@@ -112,8 +110,8 @@ def export_siamban_to_onnx(checkpoint_name: str, validation_paths: dict):
         z_feat_example = model.backbone(examplar)
         x_feat_example = model.backbone(search)
 
-    backbone_path = Paths.model_weights_dir() / "siamban_backbone.onnx"
-    head_path = Paths.model_weights_dir() / "siamban_head.onnx"
+    backbone_path = Paths.model_weights_dir() / f"{output_prefix}_backbone.onnx"
+    head_path = Paths.model_weights_dir() / f"{output_prefix}_head.onnx"
 
     torch.onnx.export(
         BackboneWrapper(model.backbone),
@@ -194,6 +192,7 @@ def export_siamban_to_onnx(checkpoint_name: str, validation_paths: dict):
     print(pt_z_feat.shape)
 
     np.testing.assert_allclose(pt_z_feat.numpy(), ort_z_feat, rtol=1e-4, atol=1e-5)
+    np.testing.assert_allclose(pt_x_feat.numpy(), ort_x_feat, rtol=1e-4, atol=1e-5)
     np.testing.assert_allclose(pt_cls.numpy(), ort_cls, rtol=1e-4, atol=1e-5)
     np.testing.assert_allclose(pt_reg.numpy(), ort_reg, rtol=1e-4, atol=1e-5)
     print('Verification passed: backbone and head outputs match.')
@@ -201,7 +200,13 @@ def export_siamban_to_onnx(checkpoint_name: str, validation_paths: dict):
     # benchmark(model, backbone_session, head_session, examplar, search)
 
 if __name__ == '__main__':
-    export_siamban_to_onnx(
-        "siamban_mixed_seed42_iou_0.6635_iog_0.7745_center_dist_5.3526_center_dist_norm_0.1766_lost_tracks_2.5000_evaluated_frames_626.8000.pth",
-        {"visdrone": r"..\..\datasets\VisDrone\val"}
-    )
+    parser = argparse.ArgumentParser(description="Export a SiamBAN checkpoint to FP32 and int8 ONNX.")
+    parser.add_argument('--model_config', required=True,
+                        help="Model config with `weights`, `backbone` and [head], e.g. siamban_fpn_tower.toml")
+    parser.add_argument('--output_prefix', required=True,
+                        help="Output file prefix in output/model_weights. Existing files with it are overwritten.")
+    parser.add_argument('--calibration_path', default=r"..\..\datasets\VisDrone\val",
+                        help="VisDrone split the int8 calibration samples from (relative to src/ by default)")
+    args = parser.parse_args()
+
+    export_siamban_to_onnx(args.model_config, args.output_prefix, {"visdrone": args.calibration_path})
