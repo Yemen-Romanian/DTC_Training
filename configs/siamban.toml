@@ -1,5 +1,5 @@
 id = "siamban"
-weights = "C:\\Users\\yevhe\\PhDProjects\\DTC_Training\\output\\siamban_training_20261028_152107\\iou_0.6736_iog_0.7727_center_dist_5.7759_center_dist_norm_0.1816_lost_tracks_2.2000_evaluated_frames_626.8000.pth"
-backbone = "mobilenetv3_fpn"
+weights = "siamban_synth_real_iou_0.6716_iog_0.8045_center_dist_6.3730.pth"
+backbone = "mobilenetv3"
 [params]
     device = "cuda"
