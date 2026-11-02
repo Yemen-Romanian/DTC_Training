@@ -13,6 +13,9 @@ from timm.utils.model import reparameterize_model
 class AlexNetFeatureExtractor(nn.Module):
     """Feature extractor that was proposed in Bertinetto et.al paper"""
 
+    # Newly initialized layers: they train at `lr` even when `backbone_lr` is set.
+    NEW_LAYERS = ()
+
     def __init__(self):
         super(AlexNetFeatureExtractor, self).__init__()
         self.stride = 8 # Networks stride
@@ -45,6 +48,9 @@ class AlexNetFeatureExtractor(nn.Module):
 
 
 class MobileNetV3FeatureExtractor(nn.Module):
+    # Newly initialized layers: they train at `lr` even when `backbone_lr` is set.
+    NEW_LAYERS = ('neck',)
+
     def __init__(self, device='cpu', freeze_weights=True, pretrained=True):
         super(MobileNetV3FeatureExtractor, self).__init__()
         self.device = device
@@ -106,6 +112,8 @@ class MobileNetV3MultiLayerFeatureExtractor(nn.Module):
     stages - into every checkpoint, which accounted for 86% of the saved file.
     """
 
+    # Newly initialized layers: they train at `lr` even when `backbone_lr` is set.
+    NEW_LAYERS = ('necks', 'fusion_weights')
     TARGET_STRIDE = 8
 
     def __init__(self, taps=(4, 9), out_channels=48, freeze_weights=True, pretrained=True):
@@ -263,6 +271,8 @@ class MobileNetV3FPNFeatureExtractor(nn.Module):
     other one's precision.
     """
 
+    # Newly initialized layers: they train at `lr` even when `backbone_lr` is set.
+    NEW_LAYERS = ('fpn',)
     TARGET_STRIDE = 8
 
     def __init__(self, taps=(4, 9, 12), out_channels=48, freeze_weights=True, pretrained=True,
@@ -400,6 +410,8 @@ class TimmFPNFeatureExtractor(nn.Module):
     cost; models with nothing to reparameterize are left as they are.
     """
 
+    # Newly initialized layers: they train at `lr` even when `backbone_lr` is set.
+    NEW_LAYERS = ('fpn',)
     TARGET_STRIDE = 8
 
     def __init__(self, name: str, strides=(8, 16, 32), out_channels: int = 48, freeze_weights=True,

@@ -78,6 +78,7 @@ def save_training_run(mlflower, config, model, val_metrics: dict, test_metrics: 
         'tower_depth': head_config.get('tower_depth', 2) if head_type == 'tower' else '',
         'batch_size': config.get_training_param('batch_size'),
         'lr': config.get_training_param('lr'),
+        'backbone_lr': config.get_training_param('backbone_lr', config.get_training_param('lr')),
         'epochs_num': config.get_training_param('epochs_num'),
         'pretrained_path': model_config.get("weights", ""),
         'run_dir': run_dir or "",

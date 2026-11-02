@@ -43,6 +43,23 @@ def init_data_worker(worker_id: int):
     torch.set_num_threads(1)
 
 
+def build_param_groups(net: torch.nn.Module, lr: float, backbone_lr: float | None = None) -> list:
+    """One group at `lr`, or, with `backbone_lr`, the backbone's own layers split off at that rate.
+
+    The head stays group 0 and the backbone group 1. The backbone's NEW_LAYERS (FPN, necks) start
+    from random weights, so they stay at `lr` with the head.
+    """
+    if backbone_lr is None:
+        return [{'params': list(net.parameters()), 'lr': lr}]
+
+    new_layers = net.backbone.NEW_LAYERS
+    backbone_params = [param for name, param in net.backbone.named_parameters()
+                       if name.split('.')[0] not in new_layers]
+    backbone_ids = {id(param) for param in backbone_params}
+    other_params = [param for param in net.parameters() if id(param) not in backbone_ids]
+    return [{'params': other_params, 'lr': lr}, {'params': backbone_params, 'lr': backbone_lr}]
+
+
 class Trainer:
     """
     Main class for model training.
@@ -81,9 +98,11 @@ class Trainer:
 
         self.nn_module = model.get_module()
         lr = config.get_training_param('lr')
+        backbone_lr = config.get_training_param('backbone_lr', None)
         # AdamW, not Adam: Adam's coupled weight decay drove channels with no task gradient to
         # ~0 (dead channels in the SiamBAN checkpoints, NEXT_EXPERIMENTS.md E6).
-        self.optimizer = optim.AdamW(self.nn_module.parameters(), lr=lr, weight_decay=1e-4)
+        self.optimizer = optim.AdamW(build_param_groups(self.nn_module, lr, backbone_lr),
+                                     lr=lr, weight_decay=1e-4)
         self.lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=5)
 
         model_id = config.get_model_config()['id']
@@ -92,6 +111,7 @@ class Trainer:
         self.logger = ExperimentLogger(self.run_dir_name)
 
         self.logger.log_dict(config.as_dict(), "effective_config.json")
+        self.logger.info(f"Learning rates: lr={lr}, backbone_lr={lr if backbone_lr is None else backbone_lr}")
         for override in config.get_overrides():
             self.logger.info(f"Config override applied: {override}")
 
@@ -166,7 +186,9 @@ class Trainer:
                     self.best_model_path = self.logger.logging_dir / f"{checkpoint_name}.pth"
                     self.logger.info(f"New model saved with val loss: {val_loss:.8f}. Current best val loss: {best_val_loss:.8f}.")
 
-            self.logger.info(f"Current learning rate: {self.lr_scheduler.get_last_lr()[0]:.6f}")
+            lrs = self.lr_scheduler.get_last_lr()
+            backbone_info = f", backbone: {lrs[1]:.6f}" if len(lrs) > 1 else ""
+            self.logger.info(f"Current learning rate: {lrs[0]:.6f}{backbone_info}")
 
         # Restore the best-by-validation checkpoint so the final test evaluation and the
         # logged model both reflect the best weights, not the last epoch's (which the
