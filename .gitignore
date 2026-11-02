@@ -14,5 +14,6 @@ configs/*
 !configs/vit.toml
 !configs/nano.toml
 !configs/evaluation.toml
+!configs/backbones/
 /.zed
 src/run_mlflow.py

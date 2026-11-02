@@ -15,7 +15,18 @@ from models.trackers.feature_extractors import (
     MobileNetV3FeatureExtractor,
     MobileNetV3MultiLayerFeatureExtractor,
     MobileNetV3FPNFeatureExtractor,
+    MobileNetV4FPNFeatureExtractor,
+    MobileOneFPNFeatureExtractor,
+    EfficientNetLiteFPNFeatureExtractor,
+    TimmFPNFeatureExtractor,
 )
+
+# Fixed timm FPN backbones by config type; any other timm model goes through type = "TimmFPN".
+TIMM_FPN_BACKBONES = {
+    'MobileNetV4FPN': MobileNetV4FPNFeatureExtractor,
+    'MobileOneFPN': MobileOneFPNFeatureExtractor,
+    'EfficientNetLiteFPN': EfficientNetLiteFPNFeatureExtractor,
+}
 from datasets.mixed_dataset import MixedDataset
 from datasets.siamban_dataset import SiamBANDataset
 from datasets.utils.tracking_augmentation_utils import get_subwindow, mean_channels
@@ -120,7 +131,6 @@ class BANHead(nn.Module):
     def forward(self, z: torch.Tensor, x: torch.Tensor):
         cls_feat = self.corr(self.cls_z_proj(z), self.cls_x_proj(x))
         reg_feat = self.corr(self.reg_z_proj(z), self.reg_x_proj(x))
-
         cls = self.cls_head(cls_feat)
         reg = F.relu(self.reg_head(reg_feat))
 
@@ -189,6 +199,20 @@ class SiamBANNet(nn.Module):
             )
             logger.info(f"Backbone FPN taps: {taps} (dilated={dilated}) -> P3 with "
                         f"{backbone.out_channels} channels")
+        elif backbone_type in TIMM_FPN_BACKBONES or backbone_type == 'TimmFPN':
+            kwargs = dict(out_channels=backbone_config.get('out_channels', 48),
+                          freeze_weights=freeze_backbone,
+                          pretrained=pretrained,
+                          norm_layer=nn.BatchNorm2d)
+            if backbone_type == 'TimmFPN':
+                backbone = TimmFPNFeatureExtractor(
+                    name=backbone_config['name'],
+                    strides=tuple(backbone_config.get('strides', (8, 16, 32))),
+                    **kwargs)
+            else:
+                backbone = TIMM_FPN_BACKBONES[backbone_type](**kwargs)
+            logger.info(f"Backbone timm FPN {backbone.name}: levels {backbone.level_channels} ch "
+                        f"-> P3 with {backbone.out_channels} channels")
         else:
             raise ValueError(f"Unsupported backbone type: {backbone_type}")
 

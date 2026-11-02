@@ -1,0 +1,8 @@
+# MobileNetV4-Conv-Small FPN, C3/C4/C5 = 64/96/128 ch. Levels are picked by stride, and C5 is
+# always dilated to stride 16 (timm output_stride=16), so there are no `taps` or `dilated` keys.
+# Checkpoints depend on these values, and loading is strict: add a new file for a new variant
+# rather than editing one that is in use.
+type = "MobileNetV4FPN"
+out_channels = 96
+freeze = false
+pretrained = true

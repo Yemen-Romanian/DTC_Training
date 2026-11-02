@@ -1,0 +1,7 @@
+# MobileNetV3-Small, single tap at features[:9] (stride 16), upsampled x2 by the neck.
+# SiamFC always uses pretrained weights and ignores `pretrained`; SiamBAN reads it.
+# Checkpoints depend on these values, and loading is strict: add a new file for a new variant
+# rather than editing one that is in use.
+type = "MobileNetV3"
+freeze = false
+pretrained = true

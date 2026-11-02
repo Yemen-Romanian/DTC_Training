@@ -29,8 +29,6 @@ mlflow_logging = true
 
 [model]
     id = "siamfc"
-    [model.backbone]
-        type = "AlexNet" # Options: "AlexNet", "MobileNetV3"
-        freeze = false
+    backbone = "alexnet"
     [model.params]
         device = "cuda"

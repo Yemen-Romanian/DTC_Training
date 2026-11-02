@@ -33,6 +33,23 @@ def to_toml_literal(value) -> str:
     raise TypeError(f"Cannot render {type(value).__name__} as a TOML literal: {value!r}")
 
 
+def resolve_backbone(model_config: dict) -> dict:
+    """Replace ``backbone = "<name>"`` with the table in configs/backbones/<name>.toml.
+
+    An inline table is left alone, so code past loading always sees a dict.
+    """
+    name = model_config.get('backbone')
+    if isinstance(name, str):
+        backbones_dir = Paths.config_dir() / "backbones"
+        path = backbones_dir / f"{name}.toml"
+        if not path.exists():
+            available = sorted(p.stem for p in backbones_dir.glob("*.toml"))
+            raise ValueError(f"Unknown backbone config {name!r}; available: {available}")
+        with open(path, 'rb') as f:
+            model_config['backbone'] = tomllib.load(f)
+    return model_config
+
+
 class Config:
     def __init__(self, config_path):
         self._config_data = None
@@ -40,6 +57,11 @@ class Config:
 
         with open(config_path, 'rb') as f:
             self._config_data = tomllib.load(f)
+        self._resolve_backbone()
+
+    def _resolve_backbone(self) -> None:
+        if isinstance(self._config_data.get('model'), dict):
+            resolve_backbone(self._config_data['model'])
 
     def get_train_paths(self):
         return self._config_data["train_path"]
@@ -116,6 +138,8 @@ class Config:
             key = key.strip()
             value = parse_toml_value(raw_value)
             self.set_by_path(key, value)
+            # After each --set, so `model.backbone=<name>` can be followed by `model.backbone.<key>=...`.
+            self._resolve_backbone()
             self._overrides.append(f"{key}={to_toml_literal(value)}")
             logger.info(f"Override: {key} = {value!r}")
 
@@ -142,4 +166,4 @@ def load_config(config_path):
 
     with open(config_path, 'rb') as f:
        model_config = tomllib.load(f)
-    return model_config
+    return resolve_backbone(model_config)

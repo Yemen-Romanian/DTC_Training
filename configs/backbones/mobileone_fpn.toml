@@ -1,0 +1,9 @@
+# MobileOne-S0 FPN, C3/C4/C5 = 128/256/1024 ch, C5 dilated to stride 16. Not trained yet.
+# With freeze = true the branches are merged into single convs up front; unfrozen, they stay
+# separate during training and must be merged before ONNX export.
+# Checkpoints depend on these values, and loading is strict: add a new file for a new variant
+# rather than editing one that is in use.
+type = "MobileOneFPN"
+out_channels = 96
+freeze = false
+pretrained = true

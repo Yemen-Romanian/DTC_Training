@@ -1,0 +1,4 @@
+# AlexNet. The extractor takes no options, so `type` is the only key.
+# Checkpoints depend on these values, and loading is strict: add a new file for a new variant
+# rather than editing one that is in use.
+type = "AlexNet"
