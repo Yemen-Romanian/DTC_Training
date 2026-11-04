@@ -2,6 +2,7 @@ import argparse
 import time
 import torch
 import numpy as np
+import onnx
 import onnxruntime as ort
 from onnxruntime.quantization import quant_pre_process
 from onnxruntime.quantization.quantize import (
@@ -88,6 +89,22 @@ class HeadWrapper(torch.nn.Module):
         return self.head(z_feat, x_feat)
 
 
+def size_computation_nodes(model_path) -> list[str]:
+    """Names of the nodes computing tensor sizes from `Shape`, to keep out of quantization.
+
+    Quantizing them rounds the sizes: EfficientNet-Lite's run-time SAME padding then comes out
+    wrong and the backbone returns 15x15 and 31x31 features instead of 16x16 and 32x32. Pad, Resize
+    and Reshape only consume a size and carry image data, so the walk stops at them.
+    """
+    derived, names = set(), []
+    for node in onnx.load(model_path).graph.node:   # topologically sorted
+        if node.op_type == 'Shape' or (node.op_type not in ('Pad', 'Resize', 'Reshape')
+                                       and any(i in derived for i in node.input)):
+            names.append(node.name)
+            derived.update(node.output)
+    return names
+
+
 def export_siamban_to_onnx(model_config_name: str, output_prefix: str, validation_paths: dict):
     """Export the network in a SiamBAN model config to <output_prefix>_{backbone,head}[_prepr|_int8].onnx.
 
@@ -140,8 +157,12 @@ def export_siamban_to_onnx(model_config_name: str, output_prefix: str, validatio
     print(f"Running preprocessing")
     preprocessed_backbone_path = backbone_path.parent / (backbone_path.stem + "_prepr.onnx")
     preprocessed_head_path = head_path.parent / (head_path.stem + "_prepr.onnx")
-    quant_pre_process(input_model=backbone_path, output_model_path=preprocessed_backbone_path)
-    quant_pre_process(input_model=head_path, output_model_path=preprocessed_head_path)
+    # auto_merge: TF-style SAME padding (EfficientNet-Lite) computes sizes at run time, so the
+    # inference cannot prove the FPN's Add inputs are equal and would otherwise stop there.
+    quant_pre_process(input_model=backbone_path, output_model_path=preprocessed_backbone_path,
+                      auto_merge=True)
+    quant_pre_process(input_model=head_path, output_model_path=preprocessed_head_path,
+                      auto_merge=True)
 
     # Quantization
     pairs = sample_calibration_pairs(MixedDataset(validation_paths), num_pairs=200, seed=0)
@@ -157,7 +178,8 @@ def export_siamban_to_onnx(model_config_name: str, output_prefix: str, validatio
         activation_type=QuantType.QUInt8,
         weight_type=QuantType.QInt8,
         per_channel=True,
-        calibrate_method=CalibrationMethod.MinMax
+        calibrate_method=CalibrationMethod.MinMax,
+        nodes_to_exclude=size_computation_nodes(preprocessed_backbone_path)
     )
 
     quantize_static(

@@ -1,0 +1,44 @@
+# Mixed regime (synthetic + VisDrone + UAV123), no pre-train.
+# Copy of training_mixed_adamw.toml (AdamW, seed 42) with the conv tower head ([model.head] at
+# the bottom), a MobileNetV4 FPN backbone instead of MobileNetV3, and 96 FPN channels instead of 48.
+# Reference: the MobileNetV3 FPN run output/siamban_training_20261028_152107 (test IoU 0.7354,
+# IoG 0.8779) - three things differ, so this is not a single-variable comparison.
+# backbone_lr = 0.0005 is newer still: this config's seed 0 and seed 42 runs (mnv4_fpn96_tower_*)
+# trained the backbone at 0.005, because the old backbone_lr_mult was never read.
+experiment_name = "real_synthetic_tracker_training"
+mlflow_logging = true
+
+[train_path]
+    synthetic = "C:\\Users\\yevhe\\PhDProjects\\datasets\\Synthetic\\train_new"
+    visdrone = "C:\\Users\\yevhe\\PhDProjects\\datasets\\VisDrone\\train"
+    uav123 = "C:\\Users\\yevhe\\PhDProjects\\datasets\\UAV123_Train_123"
+
+[val_path]
+    visdrone = "C:\\Users\\yevhe\\PhDProjects\\datasets\\VisDrone\\val"
+
+[test_path]
+    mmfw = "C:\\Users\\yevhe\\PhDProjects\\datasets\\MMFW-UAV-Processed\\Wide-Angle-Sensor-Subset"
+
+[training_params]
+    seed = 42
+    batch_size = 64
+    lr = 0.005
+    # LR of the backbone's own layers; its FPN and the head train at `lr`.
+    backbone_lr = 0.0001
+    warmup_epochs = 5
+    min_lr = 1e-5
+    epochs_num = 30
+    evaluation_interval = 3
+    data_workers_num = 15
+
+[model]
+    id = "siamban"
+    # No `weights`: the backbone starts from ImageNet, the rest from scratch, as in the baseline.
+    backbone = "efficientnet_lite_fpn"
+    [model.params]
+        device = "cuda"
+    # Variant B: 3x3 conv tower after the correlation. Delete this block (or set
+    # type = "baseline") to get the original 1x1 head back.
+    [model.head]
+        type = "tower"
+        tower_depth = 2
