@@ -231,7 +231,10 @@ def run_evaluation(evaluation_config, model_config):
     print("Starting evaluation")
     per_video_metrics = evaluate_tracker(model_config=model_config, videos=videos, protocol=protocol)
     averaged_metrics = calculate_average_metrics(per_video_metrics)
-    save_to_mlflow(averaged_metrics, protocol, model_config, evaluation_config)
+    if evaluation_config.get('log_to_mlflow', True):
+        save_to_mlflow(averaged_metrics, protocol, model_config, evaluation_config)
+    else:
+        print("MLflow logging disabled (log_to_mlflow = false)")
     print(f"Per video metrics: {per_video_metrics}")
     print(f"Averaged metrics: {averaged_metrics}")
     print("Done!")

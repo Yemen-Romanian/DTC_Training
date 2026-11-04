@@ -1,4 +1,5 @@
 protocol = "short-term" # long-term
+log_to_mlflow = true # false: nothing from this evaluation is pushed to MLflow
 [datasets]
     #synthetic = "C:\\Users\\yevhe\\PhDProjects\\datasets\\Synthetic\\val"
     #uav123 = "C:\\Users\\yevhe\\PhDProjects\\datasets\\UAV123_Test\\val"
