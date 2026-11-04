@@ -1,0 +1,12 @@
+# SiamBAN with the EfficientNet-Lite0 FPN backbone (96 channels) and the 3x3 conv tower head.
+# Weights: checkpoint of output/efficientnet_fpn96_tower_low_backbone_lr_20261103_171438, stopped
+# after about 7 epochs, so for testing only (validation IoU 0.6977, not evaluated on the test set).
+# `backbone` and [head] must match the training run.
+id = "siamban"
+weights = "siamban_efficientnet_fpn_tower_iou_0.6977_iog_0.7899_center_dist_5.1680_center_dist_norm_0.1729_lost_tracks_2.3000_evaluated_frames_626.8000.pth"
+backbone = "efficientnet_lite_fpn"
+[head]
+    type = "tower"
+    tower_depth = 2
+[params]
+    device = "cuda"

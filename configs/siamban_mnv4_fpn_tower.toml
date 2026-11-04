@@ -1,0 +1,11 @@
+# SiamBAN with the MobileNetV4 FPN backbone (96 channels) and the 3x3 conv tower head.
+# Weights: checkpoint of output/mnv4_fpn96_tower_seed_0_20261102_101831 restored for its final test
+# evaluation (MMFW test IoU 0.7879, IoG 0.8475). `backbone` and [head] must match the training run.
+id = "siamban"
+weights = "siamban_mnv4_fpn_tower_iou_0.6843_iog_0.8074_center_dist_5.0339_center_dist_norm_0.1720_lost_tracks_2.8000_evaluated_frames_626.8000.pth"
+backbone = "mobilenetv4_fpn"
+[head]
+    type = "tower"
+    tower_depth = 2
+[params]
+    device = "cuda"

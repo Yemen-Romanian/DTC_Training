@@ -10,6 +10,12 @@ configs/*
 !configs/example_training_config.toml
 !configs/siamban.toml
 !configs/siamban_onnx.toml
+!configs/siamban_fpn_tower.toml
+!configs/siamban_mnv4_fpn_tower.toml
+!configs/siamban_mnv4_fpn_tower_onnx.toml
+!configs/siamban_efficientnet_fpn_tower.toml
+!configs/siamban_efficientnet_fpn_tower_onnx.toml
+!configs/training_mixed_adamw_tower.toml
 !configs/siamfc.toml
 !configs/vit.toml
 !configs/nano.toml

@@ -1,0 +1,9 @@
+# ONNX export of siamban_mnv4_fpn_tower.toml, made by src/utils/onnx/export_to_onnx.py.
+# Bare names are looked up in output/model_weights. For FP32, drop `_int8` from both names.
+id = "siamban_onnx"
+backbone_weights = "siamban_mnv4_fpn_tower_backbone_int8.onnx"
+head_weights = "siamban_mnv4_fpn_tower_head_int8.onnx"
+[params]
+    # Per machine; find the best values with src/evaluation/benchmark_onnx_threads.py.
+    threads = 0              # 0 = ONNX Runtime default (one per physical core)
+    allow_spinning = true    # idle threads busy-wait between ops
